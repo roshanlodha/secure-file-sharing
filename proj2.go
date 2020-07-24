@@ -171,7 +171,7 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 		return userdataptr, err
 	}
 
-	//No integrity check right now
+	//No integrity check right now Ganesh was here
 	return userdataptr, nil
 }
 
