@@ -85,11 +85,20 @@ func bytesToUUID(data []byte) (ret uuid.UUID) {
 // The structure definition for a user record
 type User struct {
 	Username string
+	Userkey []byte
+	DecKey userlib.PKEDecKey
+	SignKey userlib.DSSignKey
+	//Created []CreatedFile
 
 	// You can add other fields here if you want...
 	// Note for JSON to marshal/unmarshal, the fields need to
 	// be public (start with a capital letter)
 }
+
+//type CreatedFile struct {
+	//fileUUID UUID
+	//randomUUID UUID
+//}
 
 // This creates a user.  It will only be called once for a user
 // (unless the keystore and datastore are cleared during testing purposes)
@@ -110,8 +119,26 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	var userdata User
 	userdataptr = &userdata
 
+	var EncKey userlib.PKEEncKey
+	var VerifyKey userlib.DSSignKey
+
+	var userID uuid.UUID
+	var userinfo []byte
+
 	//TODO: This is a toy implementation.
 	userdata.Username = username
+	userdata.Userkey = userlib.Argon2Key([]byte(password), []byte(username), 32)
+	
+	EncKey, userdata.DecKey, err = userlib.PKEKeyGen()
+	err = userlib.KeystoreSet(username+"enc", EncKey)
+
+	userdata.SignKey, VerifyKey, err = userlib.DSKeyGen()
+	err = userlib.KeystoreSet(username+"verify", VerifyKey)
+
+	temp := userlib.Hash([]byte(username))
+	userID, err = uuid.FromBytes(temp[:16])
+	userinfo, err = json.Marshal(userdata)
+	userlib.DatastoreSet(userID, userinfo)
 	//End of toy implementation
 
 	return &userdata, nil
@@ -122,8 +149,29 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 // data was corrupted, or if the user can't be found.
 func GetUser(username string, password string) (userdataptr *User, err error) {
 	var userdata User
+	var userID uuid.UUID
+	var userStruct []byte
+	var userKeyPrime []byte
+	var ok bool
+
 	userdataptr = &userdata
 
+	temp := userlib.Hash([]byte(username))
+	userID, err = uuid.FromBytes(temp[:16])
+	userStruct, ok = userlib.DatastoreGet(userID)
+
+	if !ok {
+		return userdataptr, err
+	}
+
+	json.Unmarshal(userStruct, userdataptr)
+	//userKeyPrime = userlib.Argon2Key([]byte(password), []byte(username), 32)
+
+	if userKeyPrime != userdata.Userkey {
+		return userdataptr, err
+	}
+
+	//No integrity check right now
 	return userdataptr, nil
 }
 
