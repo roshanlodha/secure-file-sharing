@@ -88,17 +88,23 @@ type User struct {
 	Userkey []byte
 	DecKey userlib.PKEDecKey
 	SignKey userlib.DSSignKey
-	//Created []CreatedFile
+	Created []CreatedFile
 
 	// You can add other fields here if you want...
 	// Note for JSON to marshal/unmarshal, the fields need to
 	// be public (start with a capital letter)
 }
 
-//type CreatedFile struct {
-	//fileUUID UUID
-	//randomUUID UUID
-//}
+type CreatedFile struct {
+	fileUUID uuid.UUID
+	fileKey []byte
+}
+
+type File struct {
+	Filedata []byte
+	NextEdit *File
+	FinalEdit *File
+}
 
 // This creates a user.  It will only be called once for a user
 // (unless the keystore and datastore are cleared during testing purposes)
@@ -139,6 +145,8 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	userID, err = uuid.FromBytes(temp[:16])
 	userinfo, err = json.Marshal(userdata)
 	userlib.DatastoreSet(userID, userinfo)
+
+	userdata.Created = nil
 	//End of toy implementation
 
 	return &userdata, nil
@@ -184,7 +192,12 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	//TODO: This is a toy implementation.
 	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
 	packaged_data, _ := json.Marshal(data)
-	userlib.DatastoreSet(UUID, packaged_data)
+	key := userlib.RandomBytes(16)
+	
+	userlib.DatastoreSet(UUID, userlib.SymEnc(key, userlib.RandomBytes(16), packaged_data))
+
+	file := CreatedFile{UUID, key}
+	userdata.Created = append(userdata.Created, file)
 	//End of toy implementation
 
 	return
