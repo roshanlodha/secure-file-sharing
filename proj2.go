@@ -88,21 +88,34 @@ type User struct {
 	Userkey []byte
 	DecKey userlib.PKEDecKey
 	SignKey userlib.DSSignKey
-	FilesHolder []FileData
-	Permissions []ShareData
+	Created []CreatedFile
+	Shared []Tokens
+	All []SharedWithMe
 
 	// You can add other fields here if you want...
 	// Note for JSON to marshal/unmarshal, the fields need to
 	// be public (start with a capital letter)
 }
 
-type FileData struct {
+type CreatedFile struct {
 	fileUUID uuid.UUID
 	fileKey []byte
 }
 
-type ShareData struct {
+type Tokens struct {
+	Recipient string
+	Token string
+}
 
+type SharedWithMe struct {
+	shareUUID uuid.UUID
+	NextHop string
+}
+
+type Share struct {
+	Creator uuid.UUID
+	NextHop uuid.UUID
+	Key []byte
 }
 
 type File struct {
@@ -204,8 +217,8 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 
 	userlib.DatastoreSet(UUID, packaged_data)
 
-	metadata := FileData{UUID, key}
-	userdata.FilesHolder = append(userdata.FilesHolder, metadata)
+	metadata := CreatedFile{UUID, key}
+	userdata.Created = append(userdata.Created, metadata)
 	//End of toy implementation
 
 	return
@@ -224,7 +237,7 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 	editUUID := uuid.New()
 
 	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
-	for _, file := range userdata.FilesHolder {
+	for _, file := range userdata.Created {
 		if file.fileUUID == UUID {
 			key = file.fileKey //TODO: update keyfinder for shared users
 		}
@@ -240,12 +253,12 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 	json.Unmarshal(packaged_data, &tempFile)
 	packaged_data, _ = userlib.DatastoreGet(tempFile.FinalEdit) //old final
 	json.Unmarshal(packaged_data, &tempFile) 
-	file.NextEdit = editUUID //previous final --> new edit
+	tempFile.NextEdit = editUUID //previous final --> new edit
 
 	//update original
 	packaged_data, _ = userlib.DatastoreGet(UUID)
 	json.Unmarshal(packaged_data, &tempFile)
-	file.FinalEdit = editUUID
+	tempFile.FinalEdit = editUUID
 
 	return
 }
@@ -257,14 +270,26 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 
 	var file File
 	var key []byte
+	var created bool
 
 	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
-	for _, file := range userdata.FilesHolder {
+	for _, file := range userdata.Created { //TODO: write KeyFinder helper
 		if file.fileUUID == UUID {
-			key = file.fileKey //TODO: update keyfinder for shared users
+			key = file.fileKey 
+			created = true
 		}
 	}
 
+	//shared handling
+	if !created {
+		var temp SharedWithMe
+		for _, sharedfile := range userdata.All { //TODO: write KeyFinder helper
+			if sharedfile.shareUUID == UUID {
+				temp = file
+			}
+		}
+		
+	}
 	packaged_data, ok := userlib.DatastoreGet(UUID)
 	if !ok {
 		return nil, errors.New(strings.ToTitle("File not found!"))
@@ -291,6 +316,31 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 func (userdata *User) ShareFile(filename string, recipient string) (
 	magic_string string, err error) {
 
+	var key []byte
+	var token Share
+	magic_string = string(userlib.RandomBytes(16))
+
+	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
+	for _, file := range userdata.Created { //replace with keyfinder
+		if file.fileUUID == UUID {
+			key = file.fileKey
+		}
+	}
+
+	//create accestoken as Share Struct 
+	childEncKey, ok := userlib.KeystoreGet(recipient+"enc")
+	if !ok {
+		return "", errors.New(strings.ToTitle("Recipient does not exist!"))
+	}
+	token.NextHop = UUID
+	token.Key, _ = userlib.PKEEnc(childEncKey, key)
+
+	//store token in datastore and return address
+	accessUUID, _ := uuid.FromBytes([]byte(magic_string))
+	temp, _ := json.Marshal(token)
+	userlib.DatastoreSet(accessUUID, temp)
+	userdata.Shared = append(userdata.Shared, Tokens{recipient, magic_string})
+
 	return
 }
 
@@ -300,6 +350,12 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 // it is authentically from the sender.
 func (userdata *User) ReceiveFile(filename string, sender string,
 	magic_string string) error {
+
+	var token SharedWithMe
+	token.NextHop = magic_string
+	token.shareUUID, _ = uuid.FromBytes([]byte(filename + userdata.Username)[:16])
+	userdata.All = append(userdata.All, token)
+
 	return nil
 }
 
