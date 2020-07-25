@@ -107,8 +107,9 @@ type ShareData struct {
 
 type File struct {
 	FileData []byte
-	NextEdit *File
-	FinalEdit *File
+	Creator string
+	NextEdit uuid.UUID
+	FinalEdit uuid.UUID
 }
 
 // This creates a user.  It will only be called once for a user
@@ -127,6 +128,7 @@ type File struct {
 // the attackers may possess a precomputed tables containing 
 // hashes of common passwords downloaded from the internet.
 func InitUser(username string, password string) (userdataptr *User, err error) {
+	
 	var userdata User
 	userdataptr = &userdata
 
@@ -136,7 +138,6 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	var userID uuid.UUID
 	var userinfo []byte
 
-	//TODO: This is a toy implementation.
 	userdata.Username = username
 	userdata.Userkey = userlib.Argon2Key([]byte(password), []byte(username), 32)
 	
@@ -159,6 +160,7 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 // fail with an error if the user/password is invalid, or if the user
 // data was corrupted, or if the user can't be found.
 func GetUser(username string, password string) (userdataptr *User, err error) {
+	
 	var userdata User
 	var userID uuid.UUID
 	var userStruct []byte
@@ -192,11 +194,12 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 // should NOT be revealed to the datastore!
 func (userdata *User) StoreFile(filename string, data []byte) {
 
-	//TODO: This is a toy implementation.
+	var file File
+
 	key := userlib.RandomBytes(16)
 	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
 
-	file := File{userlib.SymEnc(key, userlib.RandomBytes(16), data), nil, nil}
+	file.FileData = userlib.SymEnc(key, userlib.RandomBytes(16), data)
 	packaged_data, _ := json.Marshal(file)
 
 	userlib.DatastoreSet(UUID, packaged_data)
@@ -214,6 +217,36 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 // existing file, but only whatever additional information and
 // metadata you need.
 func (userdata *User) AppendFile(filename string, data []byte) (err error) {
+
+	var tempFile File
+	var edit File
+	var key []byte
+	editUUID := uuid.New()
+
+	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
+	for _, file := range userdata.FilesHolder {
+		if file.fileUUID == UUID {
+			key = file.fileKey //TODO: update keyfinder for shared users
+		}
+	}
+
+	//create and store edit 
+	edit.FileData = userlib.SymEnc(key, userlib.RandomBytes(16), data)
+	packaged_data, _ := json.Marshal(edit)
+	userlib.DatastoreSet(editUUID, packaged_data)
+	
+	//update previous final
+	packaged_data, _ = userlib.DatastoreGet(UUID)
+	json.Unmarshal(packaged_data, &tempFile)
+	packaged_data, _ = userlib.DatastoreGet(tempFile.FinalEdit) //old final
+	json.Unmarshal(packaged_data, &tempFile) 
+	file.NextEdit = editUUID //previous final --> new edit
+
+	//update original
+	packaged_data, _ = userlib.DatastoreGet(UUID)
+	json.Unmarshal(packaged_data, &tempFile)
+	file.FinalEdit = editUUID
+
 	return
 }
 
@@ -222,17 +255,16 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 // It should give an error if the file is corrupted in any way.
 func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 
-	//TODO: This is a toy implementation.
 	var file File
 	var key []byte
 
 	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
 	for _, file := range userdata.FilesHolder {
 		if file.fileUUID == UUID {
-			key = file.fileKey
+			key = file.fileKey //TODO: update keyfinder for shared users
 		}
 	}
-	
+
 	packaged_data, ok := userlib.DatastoreGet(UUID)
 	if !ok {
 		return nil, errors.New(strings.ToTitle("File not found!"))
@@ -240,9 +272,6 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 
 	json.Unmarshal(packaged_data, &file)
 	data = userlib.SymDec(key, file.FileData)
-	//packaged_data = userlib.SymDec(key, packaged_data)
-
-	//json.Unmarshal(packaged_data, &data)
 	return data, nil
 	//End of toy implementation
 
