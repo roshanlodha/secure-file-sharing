@@ -88,16 +88,21 @@ type User struct {
 	Userkey []byte
 	DecKey userlib.PKEDecKey
 	SignKey userlib.DSSignKey
-	Created []CreatedFile
+	FilesHolder []FileData
+	Permissions []ShareData
 
 	// You can add other fields here if you want...
 	// Note for JSON to marshal/unmarshal, the fields need to
 	// be public (start with a capital letter)
 }
 
-type CreatedFile struct {
+type FileData struct {
 	fileUUID uuid.UUID
 	fileKey []byte
+}
+
+type ShareData struct {
+
 }
 
 type File struct {
@@ -145,8 +150,6 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	userID, err = uuid.FromBytes(temp[:16])
 	userinfo, err = json.Marshal(userdata)
 	userlib.DatastoreSet(userID, userinfo)
-
-	userdata.Created = nil
 	//End of toy implementation
 
 	return &userdata, nil
@@ -196,8 +199,8 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	
 	userlib.DatastoreSet(UUID, userlib.SymEnc(key, userlib.RandomBytes(16), packaged_data))
 
-	file := CreatedFile{UUID, key}
-	userdata.Created = append(userdata.Created, file)
+	file := FileData{UUID, key}
+	userdata.FilesHolder = append(userdata.FilesHolder, file)
 	//End of toy implementation
 
 	return
@@ -218,12 +221,22 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 
 	//TODO: This is a toy implementation.
+	var key []byte
+
 	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
 	packaged_data, ok := userlib.DatastoreGet(UUID)
 	if !ok {
 		return nil, errors.New(strings.ToTitle("File not found!"))
 	}
 	json.Unmarshal(packaged_data, &data)
+
+	for _, file := range userdata.FilesHolder {
+		if file.fileUUID == UUID {
+			key = file.fileKey
+		}
+	}
+
+	data = userlib.SymDec(key, packaged_data)
 	return data, nil
 	//End of toy implementation
 
