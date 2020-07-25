@@ -106,7 +106,7 @@ type ShareData struct {
 }
 
 type File struct {
-	Filedata []byte
+	FileData []byte
 	NextEdit *File
 	FinalEdit *File
 }
@@ -195,12 +195,14 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	//TODO: This is a toy implementation.
 	key := userlib.RandomBytes(16)
 	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
-	packaged_data, _ := json.Marshal(data)
-	
-	userlib.DatastoreSet(UUID, userlib.SymEnc(key, userlib.RandomBytes(16), packaged_data))
 
-	file := FileData{UUID, key}
-	userdata.FilesHolder = append(userdata.FilesHolder, file)
+	file := File{userlib.SymEnc(key, userlib.RandomBytes(16), data), nil, nil}
+	packaged_data, _ := json.Marshal(file)
+
+	userlib.DatastoreSet(UUID, packaged_data)
+
+	metadata := FileData{UUID, key}
+	userdata.FilesHolder = append(userdata.FilesHolder, metadata)
 	//End of toy implementation
 
 	return
@@ -221,22 +223,26 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 
 	//TODO: This is a toy implementation.
+	var file File
 	var key []byte
 
 	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
-	packaged_data, ok := userlib.DatastoreGet(UUID)
-	if !ok {
-		return nil, errors.New(strings.ToTitle("File not found!"))
-	}
-
 	for _, file := range userdata.FilesHolder {
 		if file.fileUUID == UUID {
 			key = file.fileKey
 		}
 	}
-	packaged_data = userlib.SymDec(key, packaged_data)
+	
+	packaged_data, ok := userlib.DatastoreGet(UUID)
+	if !ok {
+		return nil, errors.New(strings.ToTitle("File not found!"))
+	}
 
-	json.Unmarshal(packaged_data, &data)
+	json.Unmarshal(packaged_data, &file)
+	data = userlib.SymDec(key, file.FileData)
+	//packaged_data = userlib.SymDec(key, packaged_data)
+
+	//json.Unmarshal(packaged_data, &data)
 	return data, nil
 	//End of toy implementation
 
