@@ -130,3 +130,68 @@ func TestShare(t *testing.T) {
 	}
 
 }
+
+
+func TestGetUser(t *testing.T) {
+	clear()
+
+	u1, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+
+	u1p, err2 := GetUser("Roshan", "jk I hate medicine")
+	if err2 == nil {
+		t.Error("Accessed user with wrong password", err2)
+		return
+	}
+
+	u1p, err3 := GetUser("Roshan", "mEdiCineIzMyPaSSIon")
+	if err3 != nil {
+		t.Error("Could not access user with correct password", err3)
+		return
+	}
+
+	u1p, err4 := GetUser("Ganesh", "mEdiCineIzMyPaSSIon")
+	if err4 != nil {
+		t.Error("Accesed user that does not exist", err4)
+		return
+	}
+
+}
+
+func TestStoreLoadFile(t *testing.T) {
+	clear()
+
+	u, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+
+	v := []byte("This is a test")
+	u.StoreFile("file1", v)
+
+
+	v2, err2 := u.LoadFile("file1")
+	if err2 != nil {
+		t.Error("Failed to download the file from Roshan", err2)
+		return
+	}
+
+	if string(v) != string(v2) {
+		t.Error("Filecontents do not match", err2)
+		return
+	}
+
+	v3 := []byte("This is a test of overriding file contents")
+	u.StoreFile("file1", v3)
+
+	v4, err3 := u.LoadFile("file1")
+	if string(v4) == string(v2) {
+		t.Error("File contents not overwritten", err3)
+		return
+	}
+
+}

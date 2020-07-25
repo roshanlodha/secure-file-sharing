@@ -224,6 +224,7 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	return
 }
 
+
 // This adds on to an existing file.
 //
 // Append should be efficient, you shouldn't rewrite or reencrypt the
@@ -262,6 +263,7 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 
 	return
 }
+
 
 // This loads a file from the Datastore.
 //
@@ -302,6 +304,7 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 
 	return
 }
+
 
 // This creates a sharing record, which is a key pointing to something
 // in the datastore to share with the recipient.
@@ -363,3 +366,4 @@ func (userdata *User) ReceiveFile(filename string, sender string,
 func (userdata *User) RevokeFile(filename string, target_username string) (err error) {
 	return
 }
+
