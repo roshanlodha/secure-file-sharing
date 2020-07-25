@@ -193,9 +193,9 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 func (userdata *User) StoreFile(filename string, data []byte) {
 
 	//TODO: This is a toy implementation.
+	key := userlib.RandomBytes(16)
 	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
 	packaged_data, _ := json.Marshal(data)
-	key := userlib.RandomBytes(16)
 	
 	userlib.DatastoreSet(UUID, userlib.SymEnc(key, userlib.RandomBytes(16), packaged_data))
 
@@ -228,15 +228,15 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 	if !ok {
 		return nil, errors.New(strings.ToTitle("File not found!"))
 	}
-	json.Unmarshal(packaged_data, &data)
 
 	for _, file := range userdata.FilesHolder {
 		if file.fileUUID == UUID {
 			key = file.fileKey
 		}
 	}
+	packaged_data = userlib.SymDec(key, packaged_data)
 
-	data = userlib.SymDec(key, packaged_data)
+	json.Unmarshal(packaged_data, &data)
 	return data, nil
 	//End of toy implementation
 
