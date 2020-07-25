@@ -362,7 +362,7 @@ func TestRevokeFile(t *testing.T) {
 
 	u2, err2 := InitUser("Neil", "I love working as a Walmart cashier!!")
 	if err2 != nil {
-		t.Error("Failed to initialize user", err7)
+		t.Error("Failed to initialize user", err2)
 		return
 	}
 
