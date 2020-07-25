@@ -19,11 +19,13 @@ import (
 	_ "strconv"
 )
 
+
 func clear() {
 	// Wipes the storage so one test does not affect another
 	userlib.DatastoreClear()
 	userlib.KeystoreClear()
 }
+
 
 func TestInit(t *testing.T) {
 	clear()
@@ -44,6 +46,7 @@ func TestInit(t *testing.T) {
 	// write _ = u here to make the compiler happy
 	// You probably want many more tests here.
 }
+
 
 func TestStorage(t *testing.T) {
 	clear()
@@ -66,6 +69,7 @@ func TestStorage(t *testing.T) {
 		return
 	}
 }
+
 
 func TestInvalidFile(t *testing.T) {
 	clear()
@@ -161,6 +165,7 @@ func TestGetUser(t *testing.T) {
 
 }
 
+
 func TestStoreLoadFile(t *testing.T) {
 	clear()
 
@@ -188,9 +193,153 @@ func TestStoreLoadFile(t *testing.T) {
 	v3 := []byte("This is a test of overriding file contents")
 	u.StoreFile("file1", v3)
 
-	v4, err3 := u.LoadFile("file1")
+	v4, err4 := u.LoadFile("file1")
 	if string(v4) == string(v2) {
-		t.Error("File contents not overwritten", err3)
+		t.Error("File contents not overwritten", err4)
+		return
+	}
+
+	v5, err5 := u.LoadFile("file2")
+	if err5 == nil {
+		t.Error("Downloaded a file that does not exist", err5)
+		return
+	}
+
+}
+
+
+func TestAppendFile(t *testing.T) {
+	clear()
+
+	u, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+
+	v := []byte("This is a test")
+	u.StoreFile("file1", v)
+
+
+	v1 := []byte("Appending this to my test file")
+	err2 := u.AppendFile("file1", v1)
+	if err2 != nil {
+		t.Error("Failed to append to the file", err2)
+		return
+	}
+
+	err3 := u.AppendFile("file2", v1)
+	if err3 == nil {
+		t.Error("Appended to a file that does not exist", err3)
+		return
+	}
+
+}
+
+
+func TestShareFile(t *testing.T) {
+	clear()
+
+	u, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+
+	u1, err1 := InitUser("Ganesh", "securityIzFuN!!")
+	if err1 != nil {
+		t.Error("Failed to initialize user", err1)
+		return
+	}
+
+	v := []byte("This is a test")
+	u.StoreFile("file1", v)
+
+	accTok, err2 := u.ShareFile("file1", "Ganesh")
+	if err2 != nil {
+		t.Error("Failed to share file", err2)
+		return
+	}
+
+	accTok3, err3 := u.ShareFile("file1", "Obama")
+	if err3 == nil {
+		t.Error("Shared file with user that does not exist", err3)
+		return
+	}
+
+	accTok4, err4 := u.ShareFile("file2", "Ganesh")
+	if err4 == nil {
+		t.Error("Shared file that does not exist", err4)
+		return
+	}
+
+	accTok5, err5 := u.ShareFile("file2", "Obama")
+	if err4 == nil {
+		t.Error("Shared file that does not exist with user that does not exist", err5)
+		return
+	}
+
+}
+
+
+func TestRecieveFile(t *testing.T) {
+	clear()
+
+	u, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+
+	u1, err1 := InitUser("Ganesh", "securityIzFuN!!")
+	if err1 != nil {
+		t.Error("Failed to initialize user", err1)
+		return
+	}
+
+	v := []byte("This is a test")
+	u.StoreFile("file1", v)
+
+	accTok, err2 := u.ShareFile("file1", "Ganesh")
+	if err2 != nil {
+		t.Error("Failed to share file", err2)
+		return
+	}
+
+	err3 := u1.ReceiveFile("file1", "Roshan", accTok)
+	if err3 != nil {
+		t.Error("Failed to recieve file", err3)
+		return
+	}
+
+	err4 := u1.ReceiveFile("file1", "Roshan", accTok)
+	if err4 == nil {
+		t.Error("Shared a file that was already shared with user", err4)
+		return
+	}
+
+	v5, err5 := u1.LoadFile("file1")
+	if err5 != nil {
+		t.Error("Failed to download the file from Roshan", err5)
+		return
+	}
+
+	v6 := []byte("Appending this")
+	err6 := u1.AppendFile("file1", v6)
+	if err6 != nil {
+		t.Error("Failed to append to the file", err6)
+		return
+	}
+
+	u7, err7 := InitUser("Obama", "democracy!!")
+	if err7 != nil {
+		t.Error("Failed to initialize user", err7)
+		return
+	}
+
+	accTok2, err8 := u1.ShareFile("file1", "Obama")
+	if err8 != nil {
+		t.Error("Failed to share file", err8)
 		return
 	}
 
