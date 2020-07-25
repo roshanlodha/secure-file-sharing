@@ -3,6 +3,10 @@ package proj2
 // You MUST NOT change what you import.  If you add ANY additional
 // imports it will break the autograder, and we will be Very Upset.
 
+
+//notes:
+// 1) check invalid usernames
+
 import (
 	"testing"
 	"reflect"
