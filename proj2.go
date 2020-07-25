@@ -284,13 +284,25 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 
 	//shared handling
 	if !created {
-		var temp SharedWithMe
+		var magic_string string
+		var token Share
 		for _, sharedfile := range userdata.All { //TODO: write KeyFinder helper
 			if sharedfile.shareUUID == UUID {
-				temp = file
+				magic_string = sharedfile.NextHop
+				temp, _ := userlib.DatastoreGet(sharedfile.shareUUID)
+				json.Unmarshal(temp, &token)
+				key, err = userlib.PKEDec(userdata.DecKey, token.Key)
 			}
 		}
-		
+		accessUUID, _ := uuid.FromBytes([]byte(magic_string))
+		//temp, _
+		/*
+		var tracker uuid.UUID
+		var found bool
+		while !found {
+
+		}
+		*/
 	}
 	packaged_data, ok := userlib.DatastoreGet(UUID)
 	if !ok {
