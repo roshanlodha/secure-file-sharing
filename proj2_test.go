@@ -139,25 +139,25 @@ func TestShare(t *testing.T) {
 func TestGetUser(t *testing.T) {
 	clear()
 
-	u1, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
+	_, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
 	if err != nil {
 		t.Error("Failed to initialize user", err)
 		return
 	}
 
-	u1p, err2 := GetUser("Roshan", "jk I hate medicine")
+	_, err2 := GetUser("Roshan", "jk I hate medicine")
 	if err2 == nil {
 		t.Error("Accessed user with wrong password", err2)
 		return
 	}
 
-	u1p, err3 := GetUser("Roshan", "mEdiCineIzMyPaSSIon")
+	_, err3 := GetUser("Roshan", "mEdiCineIzMyPaSSIon")
 	if err3 != nil {
 		t.Error("Could not access user with correct password", err3)
 		return
 	}
 
-	u1p, err4 := GetUser("Ganesh", "mEdiCineIzMyPaSSIon")
+	_, err4 := GetUser("Ganesh", "mEdiCineIzMyPaSSIon")
 	if err4 != nil {
 		t.Error("Accesed user that does not exist", err4)
 		return
@@ -199,7 +199,7 @@ func TestStoreLoadFile(t *testing.T) {
 		return
 	}
 
-	v5, err5 := u.LoadFile("file2")
+	_, err5 := u.LoadFile("file2")
 	if err5 == nil {
 		t.Error("Downloaded a file that does not exist", err5)
 		return
@@ -246,7 +246,7 @@ func TestShareFile(t *testing.T) {
 		return
 	}
 
-	u1, err1 := InitUser("Ganesh", "securityIzFuN!!")
+	_, err1 := InitUser("Ganesh", "securityIzFuN!!")
 	if err1 != nil {
 		t.Error("Failed to initialize user", err1)
 		return
@@ -255,25 +255,25 @@ func TestShareFile(t *testing.T) {
 	v := []byte("This is a test")
 	u.StoreFile("file1", v)
 
-	accTok, err2 := u.ShareFile("file1", "Ganesh")
+	_, err2 := u.ShareFile("file1", "Ganesh")
 	if err2 != nil {
 		t.Error("Failed to share file", err2)
 		return
 	}
 
-	accTok3, err3 := u.ShareFile("file1", "Obama")
+	_, err3 := u.ShareFile("file1", "Obama")
 	if err3 == nil {
 		t.Error("Shared file with user that does not exist", err3)
 		return
 	}
 
-	accTok4, err4 := u.ShareFile("file2", "Ganesh")
+	_, err4 := u.ShareFile("file2", "Ganesh")
 	if err4 == nil {
 		t.Error("Shared file that does not exist", err4)
 		return
 	}
 
-	accTok5, err5 := u.ShareFile("file2", "Obama")
+	_, err5 := u.ShareFile("file2", "Obama")
 	if err4 == nil {
 		t.Error("Shared file that does not exist with user that does not exist", err5)
 		return
@@ -318,7 +318,7 @@ func TestRecieveFile(t *testing.T) {
 		return
 	}
 
-	v5, err5 := u1.LoadFile("file1")
+	_, err5 := u1.LoadFile("file1")
 	if err5 != nil {
 		t.Error("Failed to download the file from Roshan", err5)
 		return
@@ -331,13 +331,13 @@ func TestRecieveFile(t *testing.T) {
 		return
 	}
 
-	u7, err7 := InitUser("Obama", "democracy!!")
+	_, err7 := InitUser("Obama", "democracy!!")
 	if err7 != nil {
 		t.Error("Failed to initialize user", err7)
 		return
 	}
 
-	accTok2, err8 := u1.ShareFile("file1", "Obama")
+	_, err8 := u1.ShareFile("file1", "Obama")
 	if err8 != nil {
 		t.Error("Failed to share file", err8)
 		return
@@ -393,13 +393,13 @@ func TestRevokeFile(t *testing.T) {
 		return
 	}
 
-	v7, err7 := u1.LoadFile("file1")
+	_, err7 := u1.LoadFile("file1")
 	if err7 != nil {
 		t.Error("Failed to download file", err7)
 		return
 	}
 
-	v8, err8:= u2.LoadFile("file1")
+	_, err8:= u2.LoadFile("file1")
 	if err8 != nil {
 		t.Error("Failed to download file", err8)
 		return
@@ -411,13 +411,13 @@ func TestRevokeFile(t *testing.T) {
 		return
 	}
 
-	v10, err10 := u1.LoadFile("file1")
+	_, err10 := u1.LoadFile("file1")
 	if err10 == nil {
 		t.Error("Downloaded file after access was revoked", err10)
 		return
 	}
 
-	v11, err11 := u2.LoadFile("file1")
+	_, err11 := u2.LoadFile("file1")
 	if err11 == nil {
 		t.Error("Downloaded file after access (of user who shared it with them) was revoked", err11)
 		return
