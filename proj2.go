@@ -120,7 +120,7 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	userdataptr = &userdata
 
 	var EncKey userlib.PKEEncKey
-	var VerifyKey userlib.DSSignKey
+	var VerifyKey userlib.DSVerifyKey
 
 	var userID uuid.UUID
 	var userinfo []byte
@@ -164,14 +164,14 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 		return userdataptr, err
 	}
 
-	json.Unmarshal(userStruct, userdataptr)
-	//userKeyPrime = userlib.Argon2Key([]byte(password), []byte(username), 32)
+	json.Unmarshal(userStruct, &userdataptr)
+	userKeyPrime = userlib.Argon2Key([]byte(password), []byte(username), 32)
 
-	if userKeyPrime != userdata.Userkey {
+	if string(userKeyPrime) != string(userdata.Userkey) {
 		return userdataptr, err
 	}
 
-	//No integrity check right now Ganesh was here
+	//No integrity check right now
 	return userdataptr, nil
 }
 
