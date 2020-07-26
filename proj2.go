@@ -212,7 +212,7 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 
 	//build and marshall File
 	file.FileData = userlib.SymEnc(key, userlib.RandomBytes(16), data)
-	packaged_data, _ := json.Marshal(data)
+	packaged_data, _ := json.Marshal(file)
 
 	//add file to datastore
 	userlib.DatastoreSet(fileUUID, packaged_data)
@@ -237,6 +237,7 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 //
 // It should give an error if the file is corrupted in any way.
 func (userdata *User) LoadFile(filename string) (data []byte, err error) {
+	
 	var key []byte
 	var fileUUID uuid.UUID
 	var file File
@@ -292,7 +293,6 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 	return data, nil
 	//End of toy implementation
 
-	return
 }
 
 // This creates a sharing record, which is a key pointing to something
@@ -311,6 +311,13 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 	var ss Share
 	var sf SharedFile
 	var key []byte
+
+	hashedRecipient := userlib.Hash([]byte(recipient))
+	recipientID, err := uuid.FromBytes(hashedRecipient[:16])
+	_, ok := userlib.DatastoreGet(recipientID)
+	if !ok {
+		return "", errors.New(strings.ToTitle("Recipient does not exist!"))
+	}
 
 	//hash filename||username for confidentiality and file UUID
 	hashedFileID := userlib.Hash([]byte(filename + userdata.Username))
