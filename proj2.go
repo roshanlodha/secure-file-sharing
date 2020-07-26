@@ -393,13 +393,11 @@ func (userdata *User) ReceiveFile(filename string, sender string,
 	token.shareUUID, _ = uuid.FromBytes([]byte(temp[:16]))
 
 	//convert this to error check if file was already shared with user
-	/*
 	for _, file := range userdata.All {
-		if file.fileUUID == UUID {
-			key = file.fileKey
+		if file.shareUUID == token.shareUUID {
+			return errors.New(strings.ToTitle("File already shared!")) 
 		}
 	}
-	*/
 
 	//add file shared with user to their shared with me table
 	userdata.All = append(userdata.All, token)
