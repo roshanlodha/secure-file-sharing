@@ -329,7 +329,7 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 
 	//get key for shared file if creator
 	for _, file := range userdata.Created {
-		if file.FileUUID == UUID {
+		if file.FileName == filename {
 			key = file.FileKey
 			found = true
 			ss.FinalHop = true
@@ -338,7 +338,7 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 
 	//get key for shared file if shared with me
 	for _, file := range userdata.Received {
-		if file.AccessUUID == UUID {
+		if file.FileName == filename {
 			key = file.FileKey
 			found = true
 		}
