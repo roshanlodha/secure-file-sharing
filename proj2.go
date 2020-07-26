@@ -90,7 +90,7 @@ type User struct {
 	SignKey userlib.DSSignKey
 	Created []CreatedFile
 	Shared []SharedFile
-	Recieved []RecievedFile
+	Received []ReceivedFile
 }
 
 type CreatedFile struct {
@@ -104,7 +104,7 @@ type SharedFile struct {
 	Recipient string
 }
 
-type RecievedFile struct {
+type ReceivedFile struct {
 	FileKey []byte
 	FileName string
 	AccessUUID uuid.UUID
