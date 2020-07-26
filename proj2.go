@@ -175,29 +175,26 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 func GetUser(username string, password string) (userdataptr *User, err error) {
 	
 	var userdata User
-	var userID uuid.UUID
-	var userStruct []byte
-	var userKeyPrime []byte
-	var ok bool
-
 	userdataptr = &userdata
 
 	//compute user UUID and see if user is in datastore
 	temp := userlib.Hash([]byte(username))
-	userID, err = uuid.FromBytes(temp[:16])
-	userStruct, ok = userlib.DatastoreGet(userID)
+	userID, err := uuid.FromBytes(temp[:16])
+	userStruct, ok := userlib.DatastoreGet(userID)
 
 	//if user does not exist, error
 	if !ok {
+		err = errors.New("user does not exist")
 		return userdataptr, err
 	}
 
-	// unmarshar user struct and compute salted hashed password
+	//unmarshal user struct and compute salted hashed password
 	json.Unmarshal(userStruct, &userdataptr)
-	userKeyPrime = userlib.Argon2Key([]byte(password), []byte(username), 32)
+	userKeyPrime := userlib.Argon2Key([]byte(password), []byte(username), 32)
 
 	//if passwords do not match, error
 	if string(userKeyPrime) != string(userdata.Userkey) {
+		err = errors.New("passwords do not match")
 		return userdataptr, err
 	}
 
@@ -216,8 +213,8 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	key := userlib.RandomBytes(16)
 
 	//hash filename||username for confidentiality and generate file UUID
-	temp:= userlib.hash(filename + userdata.Username)
-	UUID, _ := uuid.FromBytes([]byte(temp[:16])
+	temp := userlib.Hash([]byte(filename + userdata.Username))
+	UUID, _ := uuid.FromBytes([]byte(temp[:16]))
 
 	//encrypt and marshal file struct
 	file.FileData = userlib.SymEnc(key, userlib.RandomBytes(16), data)
@@ -246,7 +243,11 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 	var key []byte
 	editUUID := uuid.New()
 
-	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
+	//hash filename||username for confidentiality and generate file UUID
+	temp := userlib.Hash([]byte(filename + userdata.Username))
+	UUID, _ := uuid.FromBytes([]byte(temp[:16]))
+
+	//get key for file user is trying to edit
 	for _, file := range userdata.Created {
 		if file.fileUUID == UUID {
 			key = file.fileKey //TODO: update keyfinder for shared users
@@ -283,7 +284,11 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 	var key []byte
 	var created bool
 
-	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
+	//hash filename||username for confidentiality and generate file UUID
+	temp := userlib.Hash([]byte(filename + userdata.Username))
+	UUID, _ := uuid.FromBytes([]byte(temp[:16]))
+
+	//get key for file
 	for _, file := range userdata.Created { //TODO: write KeyFinder helper
 		if file.fileUUID == UUID {
 			key = file.fileKey 
@@ -293,17 +298,17 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 
 	//shared handling
 	if !created {
-		var magic_string string
+		//var magic_string string
 		var token Share
 		for _, sharedfile := range userdata.All { //TODO: write KeyFinder helper
 			if sharedfile.shareUUID == UUID {
-				magic_string = sharedfile.NextHop
+				//magic_string = sharedfile.NextHop
 				temp, _ := userlib.DatastoreGet(sharedfile.shareUUID)
 				json.Unmarshal(temp, &token)
 				key, err = userlib.PKEDec(userdata.DecKey, token.Key)
 			}
 		}
-		accessUUID, _ := uuid.FromBytes([]byte(magic_string))
+		//accessUUID, _ := uuid.FromBytes([]byte(magic_string))
 		//temp, _
 		/*
 		var tracker uuid.UUID
@@ -344,7 +349,12 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 	var token Share
 	magic_string = string(userlib.RandomBytes(16))
 
-	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
+	//hash filename||username for confidentiality and generate file UUID
+	temp := userlib.Hash([]byte(filename + userdata.Username))
+	UUID, _ := uuid.FromBytes([]byte(temp[:16]))
+
+
+	//get key for file
 	for _, file := range userdata.Created { //replace with keyfinder
 		if file.fileUUID == UUID {
 			key = file.fileKey
@@ -361,8 +371,8 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 
 	//store token in datastore and return address
 	accessUUID, _ := uuid.FromBytes([]byte(magic_string))
-	temp, _ := json.Marshal(token)
-	userlib.DatastoreSet(accessUUID, temp)
+	temp2, _ := json.Marshal(token)
+	userlib.DatastoreSet(accessUUID, temp2)
 	userdata.Shared = append(userdata.Shared, Tokens{recipient, magic_string})
 
 	return
@@ -377,7 +387,21 @@ func (userdata *User) ReceiveFile(filename string, sender string,
 
 	var token SharedWithMe
 	token.NextHop = magic_string
-	token.shareUUID, _ = uuid.FromBytes([]byte(filename + userdata.Username)[:16])
+
+	//hash filename||username for confidentiality and generate file UUID
+	temp := userlib.Hash([]byte(filename + userdata.Username))
+	token.shareUUID, _ = uuid.FromBytes([]byte(temp[:16]))
+
+	//convert this to error check if file was already shared with user
+	/*
+	for _, file := range userdata.All {
+		if file.fileUUID == UUID {
+			key = file.fileKey
+		}
+	}
+	*/
+
+	//add file shared with user to their shared with me table
 	userdata.All = append(userdata.All, token)
 
 	return nil
@@ -386,5 +410,6 @@ func (userdata *User) ReceiveFile(filename string, sender string,
 // Removes target user's access.
 func (userdata *User) RevokeFile(filename string, target_username string) (err error) {
 	return
+
 }
 
