@@ -307,11 +307,14 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 // should be able to know the sender.
 func (userdata *User) ShareFile(filename string, recipient string) (
 	magic_string string, err error) {
+
 	magic_string = string(userlib.RandomBytes(16))
 	var ss Share
 	var sf SharedFile
 	var key []byte
+	var found bool
 
+	//check if recipient exists
 	hashedRecipient := userlib.Hash([]byte(recipient))
 	recipientID, err := uuid.FromBytes(hashedRecipient[:16])
 	_, ok := userlib.DatastoreGet(recipientID)
@@ -323,24 +326,42 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 	hashedFileID := userlib.Hash([]byte(filename + userdata.Username))
 	UUID, _ := uuid.FromBytes([]byte(hashedFileID[:16]))
 
+	//get key for shared file if creator
 	for _, file := range userdata.Created {
 		if file.FileUUID == UUID {
 			key = file.FileKey
+			found = true
 		}
 	}
 
+	//get key for shared file if shared with me
+	for _, file := range userdata.Received {
+		if file.AccessUUID == UUID {
+			key = file.FileKey
+			found = true
+		}
+	}
+
+	//check if file exists
+	if !found {
+		return "", errors.New(strings.ToTitle("File does not exist with this user!"))
+	}
+
+
+	//create new Share Struct with encrypted file data
 	hashedUserName := userlib.Hash([]byte(userdata.Username))
 	ss.Creator, _ = uuid.FromBytes(hashedUserName[:16])
 	ss.NextHop = UUID
-
 	recipientPubKey, _ := userlib.KeystoreGet(recipient+"enc")
 	ss.Key, _ = userlib.PKEEnc(recipientPubKey, key)
 	ss.FinalHop = true
 
+	//add share struct to datastore
 	accessUUID, _ := uuid.FromBytes([]byte(magic_string))
 	metadata, _ := json.Marshal(ss)
 	userlib.DatastoreSet(accessUUID, metadata)
 
+	//create new SharedFile and add to sharer's Shared table
 	sf.MagicString = magic_string
 	sf.Recipient = recipient + filename
 	userdata.Shared = append(userdata.Shared, sf)
@@ -354,6 +375,23 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 // it is authentically from the sender.
 func (userdata *User) ReceiveFile(filename string, sender string,
 	magic_string string) error {
+		
+	var receivedfile ReceivedFile
+	var share Share
+
+	//create accessUUID for magic string
+	accessUUID, _ := uuid.FromBytes([]byte(magic_string))
+
+	//extract and store key
+	marshalledShare, _ := userlib.DatastoreGet(accessUUID)
+	json.Unmarshal(marshalledShare, &share)
+	receivedfile.FileKey, _ = userlib.PKEDec(userdata.DecKey, share.Key)
+
+	//add filename and accessUUID and store file "token"
+	receivedfile.FileName = filename
+	receivedfile.AccessUUID = accessUUID
+	userdata.Received = append(userdata.Received, receivedfile)
+
 	return nil
 }
 
