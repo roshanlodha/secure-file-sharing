@@ -380,6 +380,13 @@ func (userdata *User) ReceiveFile(filename string, sender string,
 	var receivedfile ReceivedFile
 	var share Share
 
+	//check if file already shared
+	for _, file := range userdata.Received {
+		if file.FileName == filename {
+			return errors.New(strings.ToTitle("File already shared!"))
+		}
+	}
+
 	//create accessUUID for magic string
 	accessUUID, _ := uuid.FromBytes([]byte(magic_string))
 
