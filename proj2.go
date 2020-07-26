@@ -104,7 +104,7 @@ type SharedFile struct {
 	Recipient string
 }
 
-type ReceivedFile struct {
+type RecievedFile struct {
 	FileKey []byte
 	FileName string
 	AccessUUID uuid.UUID
