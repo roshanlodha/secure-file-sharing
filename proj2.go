@@ -182,22 +182,25 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 
 	userdataptr = &userdata
 
+	//compute user UUID and see if user is in datastore
 	temp := userlib.Hash([]byte(username))
 	userID, err = uuid.FromBytes(temp[:16])
 	userStruct, ok = userlib.DatastoreGet(userID)
 
+	//if user does not exist, error
 	if !ok {
 		return userdataptr, err
 	}
 
+	// unmarshar user struct and compute salted hashed password
 	json.Unmarshal(userStruct, &userdataptr)
 	userKeyPrime = userlib.Argon2Key([]byte(password), []byte(username), 32)
 
+	//if passwords do not match, error
 	if string(userKeyPrime) != string(userdata.Userkey) {
 		return userdataptr, err
 	}
 
-	//No integrity check right now
 	return userdataptr, nil
 }
 
@@ -209,17 +212,23 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 
 	var file File
 
+	//key used to encrypt file contents
 	key := userlib.RandomBytes(16)
-	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
 
+	//hash filename||username for confidentiality and generate file UUID
+	temp:= userlib.hash(filename + userdata.Username)
+	UUID, _ := uuid.FromBytes([]byte(temp[:16])
+
+	//encrypt and marshal file struct
 	file.FileData = userlib.SymEnc(key, userlib.RandomBytes(16), data)
 	packaged_data, _ := json.Marshal(file)
 
+	//add marshalled file struct to datastore with file UUID
 	userlib.DatastoreSet(UUID, packaged_data)
 
+	//add file key and file UUID to creator's created file table
 	metadata := CreatedFile{UUID, key}
 	userdata.Created = append(userdata.Created, metadata)
-	//End of toy implementation
 
 	return
 }
