@@ -89,8 +89,8 @@ type User struct {
 	DecKey userlib.PKEDecKey
 	SignKey userlib.DSSignKey
 	Created []CreatedFile
-	Shared []Tokens
-	All []SharedWithMe
+	Shared []SharedFile
+	Recieved []RecievedFile
 
 	// You can add other fields here if you want...
 	// Note for JSON to marshal/unmarshal, the fields need to
@@ -98,24 +98,27 @@ type User struct {
 }
 
 type CreatedFile struct {
-	fileUUID uuid.UUID
-	fileKey []byte
+	FileUUID uuid.UUID
+	FileKey []byte
+	FileName string
 }
 
-type Tokens struct {
+type SharedFile struct {
+	MagicString string
 	Recipient string
-	Token string
 }
 
-type SharedWithMe struct {
-	shareUUID uuid.UUID
-	NextHop string
+type ReceivedFile struct {
+	FileKey []byte
+	FileName string
+	AccessUUID uuid.UUID
 }
 
 type Share struct {
 	Creator uuid.UUID
 	NextHop uuid.UUID
 	Key []byte
+	FinalHop bool
 }
 
 type File struct {
