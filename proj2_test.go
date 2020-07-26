@@ -1,4 +1,4 @@
-gitpackage proj2
+package proj2
 
 // You MUST NOT change what you import.  If you add ANY additional
 // imports it will break the autograder, and we will be Very Upset.
@@ -283,7 +283,7 @@ func TestShareFile(t *testing.T) {
 }
 
 
-func TestReceiveFile(t *testing.T) {
+func TestRecieveFile(t *testing.T) {
 	clear()
 
 	u, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
