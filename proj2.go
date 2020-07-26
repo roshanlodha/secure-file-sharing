@@ -203,12 +203,23 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 // The plaintext of the filename + the plaintext and length of the filename 
 // should NOT be revealed to the datastore!
 func (userdata *User) StoreFile(filename string, data []byte) {
+	var file File
+	key := userlib.RandomBytes(16) 
 
-	//TODO: This is a toy implementation.
-	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
+	//hash filename||username for confidentiality and file UUID
+	hashedFileID := userlib.Hash([]byte(filename + userdata.Username))
+	fileUUID, _ := uuid.FromBytes([]byte(hashedFileID[:16]))
+
+	//build and marshall File
+	file.FileData = userlib.SymEnc(key, userlib.RandomBytes(16), data)
 	packaged_data, _ := json.Marshal(data)
-	userlib.DatastoreSet(UUID, packaged_data)
-	//End of toy implementation
+
+	//add file to datastore
+	userlib.DatastoreSet(fileUUID, packaged_data)
+
+	//add file metadata to CreatedFile instance
+	metadata := CreatedFile{fileUUID, key, filename}
+	userdata.Created = append(userdata.Created, metadata)
 
 	return
 }
@@ -226,14 +237,58 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 //
 // It should give an error if the file is corrupted in any way.
 func (userdata *User) LoadFile(filename string) (data []byte, err error) {
+	var key []byte
+	var fileUUID uuid.UUID
+	var file File
 
-	//TODO: This is a toy implementation.
-	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
-	packaged_data, ok := userlib.DatastoreGet(UUID)
+	//look for file in created table
+	for _, createdfile := range userdata.Created {
+		if createdfile.FileName == filename {
+			key = createdfile.FileKey 
+			fileUUID = createdfile.FileUUID
+
+			break
+		}
+	}
+
+	//look in received table if not in created
+	for _, receivedfile := range userdata.Received {
+		if receivedfile.FileName == filename {
+			var share Share
+			key = receivedfile.FileKey 
+			shareUUID := receivedfile.AccessUUID
+
+			//if file has been shared with us, get loading data
+			marshalledShare, ok := userlib.DatastoreGet(shareUUID)
+			if !ok {
+				return nil, errors.New(strings.ToTitle("File access revoked!"))	
+			}
+			json.Unmarshal(marshalledShare, &share)
+
+			//get to the final hop and set fileUUID
+			for !share.FinalHop {
+				fileUUID = share.NextHop
+				marshalledShare, ok = userlib.DatastoreGet(share.NextHop)
+				if !ok {
+					return nil, errors.New(strings.ToTitle("File access revoked!"))	
+				}
+				json.Unmarshal(marshalledShare, &share)
+			}
+
+			break
+		}
+	}
+
+	//should have fileUUID and key now
+	packaged_data, ok := userlib.DatastoreGet(fileUUID)
 	if !ok {
 		return nil, errors.New(strings.ToTitle("File not found!"))
 	}
-	json.Unmarshal(packaged_data, &data)
+
+	//unmarshall file and decrypt FileData
+	json.Unmarshal(packaged_data, &file)
+	data = userlib.SymDec(key, file.FileData)
+
 	return data, nil
 	//End of toy implementation
 
@@ -252,8 +307,38 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 // should be able to know the sender.
 func (userdata *User) ShareFile(filename string, recipient string) (
 	magic_string string, err error) {
+	magic_string = string(userlib.RandomBytes(16))
+	var ss Share
+	var sf SharedFile
+	var key []byte
 
-	return
+	//hash filename||username for confidentiality and file UUID
+	hashedFileID := userlib.Hash([]byte(filename + userdata.Username))
+	UUID, _ := uuid.FromBytes([]byte(hashedFileID[:16]))
+
+	for _, file := range userdata.Created {
+		if file.FileUUID == UUID {
+			key = file.FileKey
+		}
+	}
+
+	hashedUserName := userlib.Hash([]byte(userdata.Username))
+	ss.Creator, _ = uuid.FromBytes(hashedUserName[:16])
+	ss.NextHop = UUID
+
+	recipientPubKey, _ := userlib.KeystoreGet(recipient+"enc")
+	ss.Key, _ = userlib.PKEEnc(recipientPubKey, key)
+	ss.FinalHop = true
+
+	accessUUID, _ := uuid.FromBytes([]byte(magic_string))
+	metadata, _ := json.Marshal(ss)
+	userlib.DatastoreSet(accessUUID, metadata)
+
+	sf.MagicString = magic_string
+	sf.Recipient = recipient + filename
+	userdata.Shared = append(userdata.Shared, sf)
+
+	return magic_string, err
 }
 
 // Note recipient's filename can be different from the sender's filename.
