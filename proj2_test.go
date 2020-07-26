@@ -332,7 +332,7 @@ func TestReceiveFile(t *testing.T) {
 		return
 	}
 
-	_, err7 := InitUser("Obama", "democracy!!")
+	u2, err7 := InitUser("Obama", "democracy!!")
 	if err7 != nil {
 		t.Error("Failed to initialize user", err7)
 		return
@@ -341,6 +341,12 @@ func TestReceiveFile(t *testing.T) {
 	_, err8 := u1.ShareFile("file1", "Obama")
 	if err8 != nil {
 		t.Error("Failed to share file", err8)
+		return
+	}
+
+	_, err9 := u2.LoadFile("file1")
+	if err9 != nil {
+		t.Error("Failed to download the file from Ganesh", err9)
 		return
 	}
 

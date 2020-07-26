@@ -405,5 +405,20 @@ func (userdata *User) ReceiveFile(filename string, sender string,
 
 // Removes target user's access.
 func (userdata *User) RevokeFile(filename string, target_username string) (err error) {
-	return
+	var target string
+	var magic_string string
+
+	target = target_username + filename
+
+	for _, t := range userdata.Shared {
+		if t.Recipient == target {
+			magic_string = t.MagicString
+			break
+		}
+	}
+	accessUUID, _ := uuid.FromBytes([]byte(magic_string))
+	userlib.DatastoreDelete(accessUUID)
+
+	return err
+
 }
