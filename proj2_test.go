@@ -283,7 +283,7 @@ func TestShareFile(t *testing.T) {
 }
 
 
-func TestRecieveFile(t *testing.T) {
+func TestReceiveFile(t *testing.T) {
 	clear()
 
 	u, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
@@ -309,7 +309,7 @@ func TestRecieveFile(t *testing.T) {
 
 	err3 := u1.ReceiveFile("file1", "Roshan", accTok)
 	if err3 != nil {
-		t.Error("Failed to recieve file", err3)
+		t.Error("Failed to receive file", err3)
 		return
 	}
 
@@ -378,7 +378,7 @@ func TestRevokeFile(t *testing.T) {
 
 	err4 := u1.ReceiveFile("file1", "Roshan", accTok)
 	if err4 != nil {
-		t.Error("Failed to recieve file", err4)
+		t.Error("Failed to receive file", err4)
 		return
 	}
 
@@ -390,7 +390,7 @@ func TestRevokeFile(t *testing.T) {
 
 	err6 := u2.ReceiveFile("file1", "Ganesh", accTok2)
 	if err6 != nil {
-		t.Error("Failed to recieve file", err6)
+		t.Error("Failed to receive file", err6)
 		return
 	}
 
