@@ -275,7 +275,8 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 				}
 				json.Unmarshal(marshalledShare, &share)
 			}
-
+			fileUUID = share.NextHop
+			
 			break
 		}
 	}
@@ -331,6 +332,7 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 		if file.FileUUID == UUID {
 			key = file.FileKey
 			found = true
+			ss.FinalHop = true
 		}
 	}
 
@@ -354,7 +356,6 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 	ss.NextHop = UUID
 	recipientPubKey, _ := userlib.KeystoreGet(recipient+"enc")
 	ss.Key, _ = userlib.PKEEnc(recipientPubKey, key)
-	ss.FinalHop = true
 
 	//add share struct to datastore
 	accessUUID, _ := uuid.FromBytes([]byte(magic_string))
