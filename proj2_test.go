@@ -207,7 +207,7 @@ func TestStoreLoadFile(t *testing.T) {
 
 }
 
-/*
+
 func TestAppendFile(t *testing.T) {
 	clear()
 
@@ -234,8 +234,21 @@ func TestAppendFile(t *testing.T) {
 		return
 	}
 
+	v2, err4 := u.LoadFile("file1")
+	if err4 != nil {
+		t.Error("Could not load file after appending", err4)
+		return
+	}
+
+	v3 := []byte("This is a test" + "Appending this to my test file")
+	if string(v3) != string(v2) {
+		t.Error("Did not append contents correctly", err4)
+		return 
+	}
+
+
 }
-*/
+
 
 
 func TestShareFile(t *testing.T) {
