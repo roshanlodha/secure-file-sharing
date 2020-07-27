@@ -212,6 +212,7 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 
 	//build and marshall File
 	file.FileData = userlib.SymEnc(key, userlib.RandomBytes(16), data)
+	file.FinalEdit, _ = uuid.FromBytes([]byte("defaultFile"))
 	packaged_data, _ := json.Marshal(file)
 
 	//add file to datastore
@@ -230,7 +231,104 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 // existing file, but only whatever additional information and
 // metadata you need.
 func (userdata *User) AppendFile(filename string, data []byte) (err error) {
-	return
+	
+	var found bool
+	var prevFile File
+	var OGfile File
+	var file File
+	var key []byte
+	var fileUUID uuid.UUID
+
+	//UUID for the new edit
+	editID, _ := uuid.FromBytes(userlib.RandomBytes(16))
+
+	//get key for shared file if creator
+	for _, file := range userdata.Created {
+		if file.FileName == filename {
+			key = file.FileKey
+			found = true
+		}
+	}
+
+	//get key for shared file if shared with me
+	for _, file := range userdata.Received {
+		if file.FileName == filename {
+			key = file.FileKey
+			found = true
+		}
+	}
+
+	//check if file exists
+	if !found {
+		return errors.New(strings.ToTitle("File does not exist with this user!"))
+	}
+
+
+	//encrypt edit and store in datastore
+	file.FileData = userlib.SymEnc(key, userlib.RandomBytes(16), data)
+	packaged_file, _ := json.Marshal(file)
+	userlib.DatastoreSet(editID, packaged_file)
+
+	//look for file in created table
+	for _, createdfile := range userdata.Created {
+		if createdfile.FileName == filename {
+			key = createdfile.FileKey 
+			fileUUID = createdfile.FileUUID
+
+			break
+		}
+	}
+
+	//look in received table if not in created
+	for _, receivedfile := range userdata.Received {
+		if receivedfile.FileName == filename {
+			var share Share
+			key = receivedfile.FileKey 
+			shareUUID := receivedfile.AccessUUID
+
+			//if file has been shared with us, get loading data
+			marshalledShare, ok := userlib.DatastoreGet(shareUUID)
+			if !ok {
+				return errors.New(strings.ToTitle("File access revoked!"))	
+			}
+			json.Unmarshal(marshalledShare, &share)
+
+			//get to the final hop and set fileUUID
+			for !share.FinalHop {
+				marshalledShare, ok = userlib.DatastoreGet(share.NextHop)
+				if !ok {
+					return errors.New(strings.ToTitle("Parent's file access revoked!"))	
+				}
+				json.Unmarshal(marshalledShare, &share)
+			}
+			fileUUID = share.NextHop
+			
+			break
+		}
+	}
+
+	//should have fileUUID and key now
+	packaged_data, ok := userlib.DatastoreGet(fileUUID)
+	if !ok {
+		return errors.New(strings.ToTitle("File not found!"))
+	}
+
+	//update pointers
+	json.Unmarshal(packaged_data, &OGfile)
+	baseUUID, _ := uuid.FromBytes([]byte("defaultFile"))
+	prevfinal := OGfile.FinalEdit
+	if prevfinal == baseUUID {
+		OGfile.NextEdit = editID
+	} else {
+		pf, _ := userlib.DatastoreGet(prevfinal)
+		json.Unmarshal(pf, &prevFile)
+		prevFile.NextEdit = editID
+	}
+
+	OGfile.FinalEdit = editID
+
+	return err
+
 }
 
 // This loads a file from the Datastore.
