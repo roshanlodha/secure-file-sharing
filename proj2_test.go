@@ -338,15 +338,21 @@ func TestReceiveFile(t *testing.T) {
 		return
 	}
 
-	_, err8 := u1.ShareFile("file1", "Obama")
+	accTok2, err8 := u1.ShareFile("file1", "Obama")
 	if err8 != nil {
 		t.Error("Failed to share file", err8)
 		return
 	}
 
-	_, err9 := u2.LoadFile("file1")
+	err9 := u2.ReceiveFile("file1", "Ganesh", accTok2)
 	if err9 != nil {
-		t.Error("Failed to download the file from Ganesh", err9)
+		t.Error("Unable to receive file", err9)
+		return
+	}
+
+	_, err10 := u2.LoadFile("file1")
+	if err10 != nil {
+		t.Error("Failed to download the file from Ganesh", err10)
 		return
 	}
 

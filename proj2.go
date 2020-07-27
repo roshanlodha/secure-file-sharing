@@ -268,10 +268,9 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 
 			//get to the final hop and set fileUUID
 			for !share.FinalHop {
-				fileUUID = share.NextHop
 				marshalledShare, ok = userlib.DatastoreGet(share.NextHop)
 				if !ok {
-					return nil, errors.New(strings.ToTitle("File access revoked!"))	
+					return nil, errors.New(strings.ToTitle("Parent's file access revoked!"))	
 				}
 				json.Unmarshal(marshalledShare, &share)
 			}
@@ -333,6 +332,7 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 			key = file.FileKey
 			found = true
 			ss.FinalHop = true
+			ss.NextHop = UUID
 		}
 	}
 
@@ -341,6 +341,7 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 		if file.FileName == filename {
 			key = file.FileKey
 			found = true
+			ss.NextHop = file.AccessUUID
 		}
 	}
 
@@ -353,7 +354,6 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 	//create new Share Struct with encrypted file data
 	hashedUserName := userlib.Hash([]byte(userdata.Username))
 	ss.Creator, _ = uuid.FromBytes(hashedUserName[:16])
-	ss.NextHop = UUID
 	recipientPubKey, _ := userlib.KeystoreGet(recipient+"enc")
 	ss.Key, _ = userlib.PKEEnc(recipientPubKey, key)
 
