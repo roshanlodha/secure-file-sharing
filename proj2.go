@@ -212,7 +212,9 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 
 	//build and marshall File
 	file.FileData = userlib.SymEnc(key, userlib.RandomBytes(16), data)
-	file.FinalEdit, _ = uuid.FromBytes([]byte("defaultFile"))
+	file.NextEdit, _ = uuid.FromBytes([]byte("nullUUID"))
+	file.FinalEdit, _ = uuid.FromBytes([]byte("nullUUID"))
+
 	packaged_data, _ := json.Marshal(file)
 
 	//add file to datastore
@@ -266,6 +268,9 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 
 	//encrypt edit and store in datastore
 	file.FileData = userlib.SymEnc(key, userlib.RandomBytes(16), data)
+	file.NextEdit, _ = uuid.FromBytes([]byte("nullUUID"))
+	file.FinalEdit, _ = uuid.FromBytes([]byte("nullUUID"))
+
 	packaged_file, _ := json.Marshal(file)
 	userlib.DatastoreSet(editID, packaged_file)
 
@@ -315,12 +320,14 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 
 	//update pointers
 	json.Unmarshal(packaged_data, &OGfile)
-	baseUUID, _ := uuid.FromBytes([]byte("defaultFile"))
-	prevfinal := OGfile.FinalEdit
-	if prevfinal == baseUUID {
+	nullUUID, _ := uuid.FromBytes([]byte("nullUUID"))
+	prevfinalID := OGfile.FinalEdit
+
+	//if this is the first edit, update the NextEdit
+	if prevfinalID == nullUUID {
 		OGfile.NextEdit = editID
 	} else {
-		pf, _ := userlib.DatastoreGet(prevfinal)
+		pf, _ := userlib.DatastoreGet(prevfinalID)
 		json.Unmarshal(pf, &prevFile)
 		prevFile.NextEdit = editID
 	}
@@ -386,11 +393,17 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 
 	//unmarshall file and decrypt FileData
 	json.Unmarshal(packaged_data, &file)
-	data = userlib.SymDec(key, file.FileData)
+	data = append(data, userlib.SymDec(key, file.FileData)...)
 
+	//load data from next edits
+	nullUUID, _ := uuid.FromBytes([]byte("nullUUID"))
+	for file.NextEdit != nullUUID {
+		packaged_data, _ := userlib.DatastoreGet(file.NextEdit)
+		json.Unmarshal(packaged_data, &file)
+		data = append(data, userlib.SymDec(key, file.FileData)...)
+	}
+	
 	return data, nil
-	//End of toy implementation
-
 }
 
 // This creates a sharing record, which is a key pointing to something
