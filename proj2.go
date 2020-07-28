@@ -113,7 +113,7 @@ type ReceivedFile struct {
 }
 
 type Share struct {
-	Creator uuid.UUID
+	Sender []byte
 	NextHop uuid.UUID
 	Key []byte
 	FinalHop bool
@@ -121,10 +121,10 @@ type Share struct {
 
 type File struct {
 	FileData []byte
-	Creator string
+	Editor string //Editor of first is creator
 	NextEdit uuid.UUID
 	FinalEdit uuid.UUID
-	ContentSign []byte
+	Signature []byte
 }
 
 // This updates the User struct in datastore.
@@ -140,12 +140,15 @@ func updateUser(userdata *User) {
 	userlib.DatastoreSet(userID, packaged_data)
 }
 
+// This updates the User struct locally.
+//
+// Helper function to handle multiple instances of same user.
 func refreshUser(userdata *User){
 	//get userUUID
 	temp := userlib.Hash([]byte(userdata.Username))
 	userID, _ := uuid.FromBytes(temp[:16])
 	
-	//get userdata and unmarshall
+	//update userdata
 	packaged_data, _ := userlib.DatastoreGet(userID)
 	json.Unmarshal(packaged_data, &userdata)
 }
@@ -255,9 +258,18 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 func (userdata *User) StoreFile(filename string, data []byte) {
 	var file File
 	key := userlib.RandomBytes(16)
+	var overwrite bool 
 
 	//refresh User struct
 	refreshUser(userdata)
+
+	//check if file already exists
+	for _, file := range userdata.Created {
+		if file.FileName == filename {
+			overwrite = true
+			key = file.FileKey
+		}
+	}
 
 	//hash filename||username for confidentiality and file UUID
 	hashedFileID := userlib.Hash([]byte(filename + userdata.Username))
@@ -267,7 +279,10 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	file.FileData = userlib.SymEnc(key, userlib.RandomBytes(16), data)
 	file.NextEdit, _ = uuid.FromBytes([]byte("nullUUID"))
 	file.FinalEdit, _ = uuid.FromBytes([]byte("nullUUID"))
-	//file.ContentSign, _ = userlib.DSSign(userdata.SignKey, file.FileData) 
+
+	//setting stage for verification
+	file.Editor = userdata.Username
+	file.Signature, _ = userlib.DSSign(userdata.SignKey, data)
 
 	packaged_data, _ := json.Marshal(file)
 
@@ -275,9 +290,10 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	userlib.DatastoreSet(fileUUID, packaged_data)
 
 	//add file metadata to CreatedFile instance
-	metadata := CreatedFile{fileUUID, key, filename}
-	userdata.Created = append(userdata.Created, metadata)
-
+	if !overwrite{
+		metadata := CreatedFile{fileUUID, key, filename}
+		userdata.Created = append(userdata.Created, metadata)
+	}
 	//multiple instance check - update userdata in DataStore 
 	updateUser(userdata)
 
@@ -290,6 +306,7 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 // existing file, but only whatever additional information and
 // metadata you need.
 func (userdata *User) AppendFile(filename string, data []byte) (err error) {
+	
 	var found bool
 	var prevFile File
 	var OGfile File
@@ -329,6 +346,10 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 	file.FileData = userlib.SymEnc(key, userlib.RandomBytes(16), data)
 	file.NextEdit, _ = uuid.FromBytes([]byte("nullUUID"))
 	file.FinalEdit, _ = uuid.FromBytes([]byte("nullUUID"))
+
+	//setting stage for verification
+	file.Editor = userdata.Username
+	file.Signature, _ = userlib.DSSign(userdata.SignKey, data)
 
 	packaged_file, _ := json.Marshal(file)
 	userlib.DatastoreSet(editID, packaged_file)
@@ -412,6 +433,7 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 //
 // It should give an error if the file is corrupted in any way.
 func (userdata *User) LoadFile(filename string) (data []byte, err error) {
+	
 	var key []byte
 	var fileUUID uuid.UUID
 	var file File
@@ -470,25 +492,19 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 	json.Unmarshal(packaged_data, &file)
 	data = append(data, userlib.SymDec(key, file.FileData)...)
 
-	/*
-	//if verify key does not exist, error
-	verKey, ok := userlib.KeystoreGet(userdata.Username + "verify")
-	if !ok {
-		err = errors.New("verify key does not exist")
-		return data, err
-	}
-
-	//if filedata tampered, error
-	dataErr := userlib.DSVerify(verKey, file.FileData, file.ContentSign)
-	if dataErr != nil {
-		err = errors.New("filedata tampered with")
-		return data, err
-	}
-	*/
-
 	//load data from next edits
 	nullUUID, _ := uuid.FromBytes([]byte("nullUUID"))
 	for file.NextEdit != nullUUID {
+		//verification
+		/*
+		verkey, temperr := userlib.KeystoreGet(file.Editor+"verify")
+		ver := userlib.DSVerify(verkey, []byte(file.FileData), file.Signature)
+		if ver != nil {
+			return nil, errors.New(strings.ToTitle("File corrupted!"))
+		}
+		*/
+
+		//building file content
 		packaged_data, _ := userlib.DatastoreGet(file.NextEdit)
 		json.Unmarshal(packaged_data, &file)
 		data = append(data, userlib.SymDec(key, file.FileData)...)
@@ -509,14 +525,15 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 // should be able to know the sender.
 func (userdata *User) ShareFile(filename string, recipient string) (
 	magic_string string, err error) {
+
+	//refresh User struct
+	refreshUser(userdata)
+
 	magic_string = string(userlib.RandomBytes(16))
 	var ss Share
 	var sf SharedFile
 	var key []byte
 	var found bool
-
-	//refresh User struct
-	refreshUser(userdata)
 
 	//check if recipient exists
 	hashedRecipient := userlib.Hash([]byte(recipient))
@@ -556,8 +573,9 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 
 
 	//create new Share Struct with encrypted file data
-	hashedUserName := userlib.Hash([]byte(userdata.Username))
-	ss.Creator, _ = uuid.FromBytes(hashedUserName[:16])
+	//hashedUserName := userlib.Hash([]byte(userdata.Username))
+	//ss.Sender, _ = uuid.FromBytes(hashedUserName[:16])
+	ss.Sender, _ = userlib.DSSign(userdata.SignKey, []byte(magic_string + userdata.Username))
 	recipientPubKey, _ := userlib.KeystoreGet(recipient+"enc")
 	ss.Key, _ = userlib.PKEEnc(recipientPubKey, key)
 
@@ -584,23 +602,39 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 // it is authentically from the sender.
 func (userdata *User) ReceiveFile(filename string, sender string,
 	magic_string string) error {
+
+	//refresh User struct
+	refreshUser(userdata)
+		
 	var receivedfile ReceivedFile
 	var share Share
 	//var senderUser User
 	//var sign []byte
 
-	//refresh User struct
-	refreshUser(userdata)
 
-	//check if file already shared
+	//check if file already shared or created
+	for _, file := range userdata.Created {
+		if file.FileName == filename {
+			return errors.New(strings.ToTitle("File already shared!"))
+		}
+	}
 	for _, file := range userdata.Received {
 		if file.FileName == filename {
 			return errors.New(strings.ToTitle("File already shared!"))
 		}
 	}
 
+	//verify sender
+
 	//create accessUUID for magic string
 	accessUUID, _ := uuid.FromBytes([]byte(magic_string))
+
+	//check if accesstoken is being used 
+	for _, file := range userdata.Received {
+		if file.AccessUUID == accessUUID {
+			return errors.New(strings.ToTitle("Access token has already been used!"))
+		}
+	}
 
 	//extract and store key
 	marshalledShare, _ := userlib.DatastoreGet(accessUUID)
@@ -639,6 +673,13 @@ func (userdata *User) ReceiveFile(filename string, sender string,
 
 	receivedfile.FileKey, _ = userlib.PKEDec(userdata.DecKey, share.Key)
 
+	//verify magic string
+	verkey, _ := userlib.KeystoreGet(sender + "verify")
+	validation := userlib.DSVerify(verkey, []byte(magic_string+sender), []byte(share.Sender))
+	if validation != nil {
+		return errors.New("Token was corrupted!")
+	}
+
 	//add filename and accessUUID and store file "token"
 	receivedfile.FileName = filename
 	receivedfile.AccessUUID = accessUUID
@@ -657,7 +698,7 @@ func (userdata *User) RevokeFile(filename string, target_username string) (err e
 	var creator bool
 
 	//refresh User struct
-	refreshUser(userdata)
+	//refreshUser(userdata)
 
 	for _, cf := range userdata.Created {
 		if cf.FileName == filename {

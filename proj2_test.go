@@ -375,7 +375,33 @@ func TestShareFile(t *testing.T) {
 		t.Error("Shared file that does not exist with user that does not exist", err5)
 		return
 	}
+	//test evesdropper
+	clear()
+	roshan, _ := InitUser("roshan", "badpswd")
+	ganesh, _ := InitUser("ganesh", "badpswd")
+	eve, _ := InitUser("eve", "badpswd")
 
+	roshan.StoreFile("checkevesdrop", []byte("can eve see this?"))
+	token, basicshareerror := roshan.ShareFile("checkevesdrop", "ganesh")
+	if basicshareerror != nil{
+		t.Error("Unable to share", basicshareerror)
+		return
+	}
+
+	_ = eve.ReceiveFile("evetriedtoload", "ganesh", token)
+	evefiledata, evecannotsee := eve.LoadFile("evetriedtoload")
+	if evecannotsee == nil{
+		t.Error("Eve was able to access file")
+		t.Error(string(evefiledata))
+		return
+	}
+	_ = ganesh.ReceiveFile("ganeshtriedtoload", "roshan", token)
+	ganeshfiledata, ganeshcansee := ganesh.LoadFile("ganeshtriedtoload")
+	if ganeshcansee != nil{
+		t.Error("Ganesh could not access file")
+		t.Error(string(ganeshfiledata))
+		return
+	}
 }
 
 
@@ -457,82 +483,82 @@ func TestReceiveFile(t *testing.T) {
 func TestRevokeFile(t *testing.T) {
 	clear()
 
-	u, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
+	roshan, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
 	if err != nil {
 		t.Error("Failed to initialize user", err)
 		return
 	}
 
-	u1, err1 := InitUser("Ganesh", "securityIzFuN!!")
+	ganesh, err1 := InitUser("Ganesh", "securityIzFuN!!")
 	if err1 != nil {
 		t.Error("Failed to initialize user", err1)
 		return
 	}
 
-	u2, err2 := InitUser("Neil", "I love working as a Walmart cashier!!")
+	neil, err2 := InitUser("Neil", "I love working as a Walmart cashier!!")
 	if err2 != nil {
 		t.Error("Failed to initialize user", err2)
 		return
 	}
 
 	v := []byte("This is a test")
-	u.StoreFile("file1", v)
+	roshan.StoreFile("file1", v)
 
-	accTok, err3 := u.ShareFile("file1", "Ganesh")
+	accTok, err3 := roshan.ShareFile("file1", "Ganesh")
 	if err3 != nil {
 		t.Error("Failed to share file", err3)
 		return
 	}
 
-	err4 := u1.ReceiveFile("file1", "Roshan", accTok)
+	err4 := ganesh.ReceiveFile("file1", "Roshan", accTok)
 	if err4 != nil {
 		t.Error("Failed to receive file", err4)
 		return
 	}
 
-	accTok2, err5 := u1.ShareFile("file1", "Neil")
+	accTok2, err5 := ganesh.ShareFile("file1", "Neil")
 	if err5 != nil {
 		t.Error("Failed to share file", err5)
 		return
 	}
 
-	err6 := u2.ReceiveFile("file1", "Ganesh", accTok2)
+	err6 := neil.ReceiveFile("file1", "Ganesh", accTok2)
 	if err6 != nil {
 		t.Error("Failed to receive file", err6)
 		return
 	}
 
-	_, err7 := u1.LoadFile("file1")
+	_, err7 := ganesh.LoadFile("file1")
 	if err7 != nil {
 		t.Error("Failed to download file", err7)
 		return
 	}
 
-	_, err8:= u2.LoadFile("file1")
+	_, err8:= neil.LoadFile("file1")
 	if err8 != nil {
 		t.Error("Failed to download file", err8)
 		return
 	}
 
-	err9 := u.RevokeFile("file1", "Ganesh")
+	err9 := roshan.RevokeFile("file1", "Ganesh")
 	if err9 != nil {
 		t.Error("Failed to revoke access", err9)
 		return
 	}
 
-	_, err10 := u1.LoadFile("file1")
+	filedata, err10 := ganesh.LoadFile("file1")
 	if err10 == nil {
-		t.Error("Downloaded file after access was revoked", err10)
-		return
+		t.Error("Downloaded file after access was revoked", filedata)
+		//return
 	}
 
-	_, err11 := u2.LoadFile("file1")
+	_, err11 := neil.LoadFile("file1")
 	if err11 == nil {
 		t.Error("Downloaded file after access (of user who shared it with them) was revoked", err11)
 		return
 	}
 
-	err12 := u1.RevokeFile("file1", "Roshan")
+	err12 := ganesh.RevokeFile("file1", "Roshan")
 	if err12 == nil {
 		t.Error("Tried to revoke access from creator", err12)
 		return
