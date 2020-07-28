@@ -326,6 +326,7 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 	//if this is the first edit, update the NextEdit
 	if prevfinalID == nullUUID {
 		OGfile.NextEdit = editID
+		OGfile.FinalEdit = editID
 		packaged_data, _ = json.Marshal(OGfile)
 		userlib.DatastoreSet(fileUUID, packaged_data)
 	} else {
@@ -337,9 +338,10 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 		prevFile.NextEdit = editID
 		packaged_data, _ = json.Marshal(prevFile)
 		userlib.DatastoreSet(prevfinalID, packaged_data)
+		OGfile.FinalEdit = editID
+		packaged_data2, _ := json.Marshal(OGfile)
+		userlib.DatastoreSet(fileUUID, packaged_data2)
 	}
-
-	OGfile.FinalEdit = editID
 
 	return err
 
@@ -409,8 +411,6 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 		json.Unmarshal(packaged_data, &file)
 		data = append(data, userlib.SymDec(key, file.FileData)...)
 	}
-
-	println(string(data))
 	
 	return data, nil
 }

@@ -289,7 +289,7 @@ func TestAppendFile(t *testing.T) {
 	}
 
 	v8 := []byte("This is a test" + "Appending this to my test file" + "Ganesh is appending this" + "Neil is appending this")
-
+	
 	v9, err11 := u1.LoadFile("file1")
 	if err11 != nil {
 		t.Error("Could not load file after appending", err11)
@@ -300,7 +300,7 @@ func TestAppendFile(t *testing.T) {
 		t.Error("Did not append contents correctly", err11)
 		return 
 	}
-
+	
 	v10, err12 := u2.LoadFile("file1")
 	if err12 != nil {
 		t.Error("Could not load file after appending", err12)
@@ -308,7 +308,7 @@ func TestAppendFile(t *testing.T) {
 	}
 
 	if string(v8) != string(v10) {
-		t.Error("Did not append contents correctly", err11)
+		t.Error("Did not append contents correctly", err12)
 		return 
 	}
 
