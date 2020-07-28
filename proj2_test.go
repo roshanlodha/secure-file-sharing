@@ -163,6 +163,12 @@ func TestGetUser(t *testing.T) {
 		return
 	}
 
+	_, err5 := InitUser("Roshan", "oskiii")
+	if err5 == nil {
+		t.Error("Duplicate username", err5)
+		return
+	}
+
 }
 
 
@@ -523,6 +529,12 @@ func TestRevokeFile(t *testing.T) {
 	_, err11 := u2.LoadFile("file1")
 	if err11 == nil {
 		t.Error("Downloaded file after access (of user who shared it with them) was revoked", err11)
+		return
+	}
+
+	err12 := u1.RevokeFile("file1", "Roshan")
+	if err12 == nil {
+		t.Error("Tried to revoke access from creator", err12)
 		return
 	}
 

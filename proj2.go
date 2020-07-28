@@ -91,6 +91,7 @@ type User struct {
 	Created []CreatedFile
 	Shared []SharedFile
 	Received []ReceivedFile
+	Sign []byte
 }
 
 type CreatedFile struct {
@@ -149,6 +150,13 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	var userID uuid.UUID
 	var userinfo []byte
 
+	temp := userlib.Hash([]byte(username))
+	userID, err = uuid.FromBytes(temp[:16])
+	_, ok := userlib.DatastoreGet(userID)
+	if ok {
+		return &userdata, errors.New("User with this username already exists!")
+	}
+
 	userdata.Username = username
 	userdata.Userkey = userlib.Argon2Key([]byte(password), []byte(username), 32)
 	
@@ -158,8 +166,6 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	userdata.SignKey, VerifyKey, err = userlib.DSKeyGen()
 	err = userlib.KeystoreSet(username+"verify", VerifyKey)
 
-	temp := userlib.Hash([]byte(username))
-	userID, err = uuid.FromBytes(temp[:16])
 	userinfo, err = json.Marshal(userdata)
 	userlib.DatastoreSet(userID, userinfo)
 	//End of toy implementation
@@ -530,6 +536,18 @@ func (userdata *User) ReceiveFile(filename string, sender string,
 func (userdata *User) RevokeFile(filename string, target_username string) (err error) {
 	var target string
 	var magic_string string
+	var creator bool
+
+	for _, cf := range userdata.Created {
+		if cf.FileName == filename {
+			creator = true
+		}
+	}
+
+	if !creator {
+		return errors.New(strings.ToTitle("Tried to revoke access for file user did not create"))
+	}
+
 
 	target = target_username + filename
 
