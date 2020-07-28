@@ -327,7 +327,10 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 	if prevfinalID == nullUUID {
 		OGfile.NextEdit = editID
 	} else {
-		pf, _ := userlib.DatastoreGet(prevfinalID)
+		pf, ok := userlib.DatastoreGet(prevfinalID)
+		if !ok {
+			return errors.New(strings.ToTitle("prevfinalID not found!"))
+		}
 		json.Unmarshal(pf, &prevFile)
 		prevFile.NextEdit = editID
 	}
@@ -401,7 +404,10 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 		packaged_data, _ := userlib.DatastoreGet(file.NextEdit)
 		json.Unmarshal(packaged_data, &file)
 		data = append(data, userlib.SymDec(key, file.FileData)...)
+		println(string(data))
 	}
+
+	//println(string(data))
 	
 	return data, nil
 }
