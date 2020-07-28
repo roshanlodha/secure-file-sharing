@@ -103,6 +103,7 @@ type CreatedFile struct {
 type SharedFile struct {
 	MagicString string
 	Recipient string
+	TokenSign []byte
 }
 
 type ReceivedFile struct {
@@ -533,6 +534,7 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 	//create new SharedFile and add to sharer's Shared table
 	sf.MagicString = magic_string
 	sf.Recipient = recipient + filename
+	//sf.TokenSign, _ = userlib.DSSign(userdata.SignKey, []byte(sf.MagicString)) 
 	userdata.Shared = append(userdata.Shared, sf)
 
 	return magic_string, err
@@ -547,6 +549,9 @@ func (userdata *User) ReceiveFile(filename string, sender string,
 		
 	var receivedfile ReceivedFile
 	var share Share
+	//var senderUser User
+	//var sign []byte
+
 
 	//check if file already shared
 	for _, file := range userdata.Received {
@@ -561,6 +566,38 @@ func (userdata *User) ReceiveFile(filename string, sender string,
 	//extract and store key
 	marshalledShare, _ := userlib.DatastoreGet(accessUUID)
 	json.Unmarshal(marshalledShare, &share)
+
+	/*
+	//if verify key does not exist, error
+	verKey, ok := userlib.KeystoreGet(sender + "verify")
+	if !ok {
+		return errors.New("verify key does not exist")
+	}
+
+	temp := userlib.Hash([]byte(sender))
+	userID, _ := uuid.FromBytes(temp[:16])
+	senderStruct, ok := userlib.DatastoreGet(userID)
+	if !ok {
+		return errors.New("sender does not exist")
+	}
+
+	json.Unmarshal(senderStruct, &senderUser)
+
+	//get signature of magic string
+	for _, file := range senderUser.Shared {
+		if string(file.MagicString) == string(magic_string) {
+			sign = file.TokenSign
+		}
+	}
+
+
+	//check if access token actually sent by sender
+	tokErr := userlib.DSVerify(verKey, []byte(magic_string), sign)
+	if tokErr != nil {
+		return errors.New("filedata tampered with")
+	}
+	*/
+
 	receivedfile.FileKey, _ = userlib.PKEDec(userdata.DecKey, share.Key)
 
 	//add filename and accessUUID and store file "token"
