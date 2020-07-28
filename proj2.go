@@ -399,6 +399,9 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 	if !ok {
 		return nil, errors.New(strings.ToTitle("File not found!"))
 	}
+	if len(key) == 0 {
+		return nil, errors.New(strings.ToTitle("Unknown key error."))
+	}
 
 	//unmarshall file and decrypt FileData
 	json.Unmarshal(packaged_data, &file)
