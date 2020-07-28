@@ -246,6 +246,83 @@ func TestAppendFile(t *testing.T) {
 		return 
 	}
 
+	u1, err5 := InitUser("Ganesh", "securityIzFuN!!")
+	if err5 != nil {
+		t.Error("Failed to initialize user", err5)
+		return
+	}
+
+	u2, err6 := InitUser("Neil", "I love working as a Walmart cashier!!")
+	if err6 != nil {
+		t.Error("Failed to initialize user", err6)
+		return
+	}
+
+	accTok, err7 := u.ShareFile("file1", "Ganesh")
+	if err7 != nil {
+		t.Error("Failed to share file", err7)
+		return
+	}
+
+	u1.ReceiveFile("file1", "Roshan", accTok)
+
+	accTok2, err8 := u1.ShareFile("file1", "Neil")
+	if err8 != nil {
+		t.Error("Failed to share file", err8)
+		return
+	}
+
+	u2.ReceiveFile("file1", "Ganesh", accTok2)
+
+	v6 := []byte("Ganesh is appending this")
+	err9 := u1.AppendFile("file1", v6)
+	if err9 != nil {
+		t.Error("Ganesh failed to append", err9)
+		return
+	}
+
+	v7 := []byte("Neil is appending this")
+	err10 := u2.AppendFile("file1", v7)
+	if err10 != nil {
+		t.Error("Neil failed to append", err10)
+		return
+	}
+
+	v8 := []byte("This is a test" + "Appending this to my test file" + "Ganesh is appending this" + "Neil is appending this")
+
+	v9, err11 := u1.LoadFile("file1")
+	if err11 != nil {
+		t.Error("Could not load file after appending", err11)
+		return
+	}
+
+	if string(v8) != string(v9) {
+		t.Error("Did not append contents correctly", err11)
+		return 
+	}
+
+	v10, err12 := u2.LoadFile("file1")
+	if err12 != nil {
+		t.Error("Could not load file after appending", err12)
+		return
+	}
+
+	if string(v8) != string(v10) {
+		t.Error("Did not append contents correctly", err11)
+		return 
+	}
+
+	v11, err13 := u.LoadFile("file1")
+	if err13 != nil {
+		t.Error("Could not load file after appending", err13)
+		return
+	}
+
+	if string(v8) != string(v11) {
+		t.Error("Did not append contents correctly", err13)
+		return 
+	}
+
 
 }
 

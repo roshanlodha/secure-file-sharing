@@ -410,7 +410,7 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 		data = append(data, userlib.SymDec(key, file.FileData)...)
 	}
 
-	//println(string(data))
+	println(string(data))
 	
 	return data, nil
 }
