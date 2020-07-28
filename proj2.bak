@@ -140,16 +140,6 @@ func updateUser(userdata *User) {
 	userlib.DatastoreSet(userID, packaged_data)
 }
 
-func refreshUser(userdata *User){
-	//get userUUID
-	temp := userlib.Hash([]byte(userdata.Username))
-	userID, _ := uuid.FromBytes(temp[:16])
-	
-	//get userdata and unmarshall
-	packaged_data, _ := userlib.DatastoreGet(userID)
-	json.Unmarshal(packaged_data, &userdata)
-}
-
 // This creates a user.  It will only be called once for a user
 // (unless the keystore and datastore are cleared during testing purposes)
 
@@ -254,10 +244,7 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 // should NOT be revealed to the datastore!
 func (userdata *User) StoreFile(filename string, data []byte) {
 	var file File
-	key := userlib.RandomBytes(16)
-
-	//refresh User struct
-	refreshUser(userdata)
+	key := userlib.RandomBytes(16) 
 
 	//hash filename||username for confidentiality and file UUID
 	hashedFileID := userlib.Hash([]byte(filename + userdata.Username))
@@ -290,15 +277,13 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 // existing file, but only whatever additional information and
 // metadata you need.
 func (userdata *User) AppendFile(filename string, data []byte) (err error) {
+	
 	var found bool
 	var prevFile File
 	var OGfile File
 	var file File
 	var key []byte
 	var fileUUID uuid.UUID
-
-	//refresh User struct
-	refreshUser(userdata)
 
 	//UUID for the new edit
 	editID, _ := uuid.FromBytes(userlib.RandomBytes(16))
@@ -412,12 +397,10 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 //
 // It should give an error if the file is corrupted in any way.
 func (userdata *User) LoadFile(filename string) (data []byte, err error) {
+	
 	var key []byte
 	var fileUUID uuid.UUID
 	var file File
-
-	//refresh User struct
-	refreshUser(userdata)
 
 	//look for file in created table
 	for _, createdfile := range userdata.Created {
@@ -509,14 +492,12 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 // should be able to know the sender.
 func (userdata *User) ShareFile(filename string, recipient string) (
 	magic_string string, err error) {
+
 	magic_string = string(userlib.RandomBytes(16))
 	var ss Share
 	var sf SharedFile
 	var key []byte
 	var found bool
-
-	//refresh User struct
-	refreshUser(userdata)
 
 	//check if recipient exists
 	hashedRecipient := userlib.Hash([]byte(recipient))
@@ -584,13 +565,12 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 // it is authentically from the sender.
 func (userdata *User) ReceiveFile(filename string, sender string,
 	magic_string string) error {
+		
 	var receivedfile ReceivedFile
 	var share Share
 	//var senderUser User
 	//var sign []byte
 
-	//refresh User struct
-	refreshUser(userdata)
 
 	//check if file already shared
 	for _, file := range userdata.Received {
@@ -655,9 +635,6 @@ func (userdata *User) RevokeFile(filename string, target_username string) (err e
 	var target string
 	var magic_string string
 	var creator bool
-
-	//refresh User struct
-	refreshUser(userdata)
 
 	for _, cf := range userdata.Created {
 		if cf.FileName == filename {
