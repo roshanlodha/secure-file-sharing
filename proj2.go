@@ -123,6 +123,7 @@ type File struct {
 	Creator string
 	NextEdit uuid.UUID
 	FinalEdit uuid.UUID
+	ContentSign []byte
 }
 
 // This creates a user.  It will only be called once for a user
@@ -203,18 +204,22 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 		return userdataptr, err
 	}
 
-	//if userkey tampered, error
+	/*
+	//if verify key does not exist, error
 	verKey, ok := userlib.KeystoreGet(userdata.Username + "verify")
 	if !ok {
 		err = errors.New("verify key does not exist")
 		return userdataptr, err
 	}
 
+	
+	//if userkey tampered, error
 	keyErr := userlib.DSVerify(verKey, userdata.Userkey, userdata.Sign)
 	if keyErr != nil {
 		err = errors.New("userkey tampered with")
 		return userdataptr, err
 	}
+	*/
 
 	return userdataptr, nil
 }
@@ -235,6 +240,7 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	file.FileData = userlib.SymEnc(key, userlib.RandomBytes(16), data)
 	file.NextEdit, _ = uuid.FromBytes([]byte("nullUUID"))
 	file.FinalEdit, _ = uuid.FromBytes([]byte("nullUUID"))
+	//file.ContentSign, _ = userlib.DSSign(userdata.SignKey, file.FileData) 
 
 	packaged_data, _ := json.Marshal(file)
 
@@ -348,6 +354,7 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 	if prevfinalID == nullUUID {
 		OGfile.NextEdit = editID
 		OGfile.FinalEdit = editID
+		//OGfile.ContentSign, _ = userlib.DSSign(userdata.SignKey, OGfile.FileData) 
 		packaged_data, _ = json.Marshal(OGfile)
 		userlib.DatastoreSet(fileUUID, packaged_data)
 	} else {
@@ -357,6 +364,7 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 		}
 		json.Unmarshal(pf, &prevFile)
 		prevFile.NextEdit = editID
+		//prevFile.ContentSign, _ = userlib.DSSign(userdata.SignKey, prevFile.FileData) 
 		packaged_data, _ = json.Marshal(prevFile)
 		userlib.DatastoreSet(prevfinalID, packaged_data)
 		OGfile.FinalEdit = editID
@@ -427,6 +435,22 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 	//unmarshall file and decrypt FileData
 	json.Unmarshal(packaged_data, &file)
 	data = append(data, userlib.SymDec(key, file.FileData)...)
+
+	/*
+	//if verify key does not exist, error
+	verKey, ok := userlib.KeystoreGet(userdata.Username + "verify")
+	if !ok {
+		err = errors.New("verify key does not exist")
+		return data, err
+	}
+
+	//if filedata tampered, error
+	dataErr := userlib.DSVerify(verKey, file.FileData, file.ContentSign)
+	if dataErr != nil {
+		err = errors.New("filedata tampered with")
+		return data, err
+	}
+	*/
 
 	//load data from next edits
 	nullUUID, _ := uuid.FromBytes([]byte("nullUUID"))
