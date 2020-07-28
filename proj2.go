@@ -166,7 +166,9 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	userdata.SignKey, VerifyKey, err = userlib.DSKeyGen()
 	err = userlib.KeystoreSet(username+"verify", VerifyKey)
 
+	userdata.Sign, _ = userlib.DSSign(userdata.SignKey, userdata.Userkey) 
 	userinfo, err = json.Marshal(userdata)
+
 	userlib.DatastoreSet(userID, userinfo)
 	//End of toy implementation
 
@@ -198,6 +200,19 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	//if passwords do not match, error
 	if string(userKeyPrime) != string(userdata.Userkey) {
 		err = errors.New("passwords do not match")
+		return userdataptr, err
+	}
+
+	//if userkey tampered, error
+	verKey, ok := userlib.KeystoreGet(userdata.Username + "verify")
+	if !ok {
+		err = errors.New("verify key does not exist")
+		return userdataptr, err
+	}
+
+	keyErr := userlib.DSVerify(verKey, userdata.Userkey, userdata.Sign)
+	if keyErr != nil {
+		err = errors.New("userkey tampered with")
 		return userdataptr, err
 	}
 
