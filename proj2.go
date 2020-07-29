@@ -171,10 +171,9 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 
 	userdata.Sign, _ = userlib.DSSign(userdata.SignKey, userdata.Userkey) 
 	userinfo, err = json.Marshal(userdata)
-
 	userlib.DatastoreSet(userID, userinfo)
 
-	return &userdata, nil
+	return userdataptr, nil
 }
 
 // This fetches the user information from the Datastore.  It should
@@ -188,6 +187,7 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	temp := userlib.Hash([]byte(username))
 	userID, err := uuid.FromBytes(temp[:16])
 	userStruct, ok := userlib.DatastoreGet(userID)
+	
 
 	//if user does not exist, error
 	if !ok {
@@ -196,7 +196,7 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	}
 
 	//unmarshal user struct and compute salted hashed password
-	json.Unmarshal(userStruct, &userdataptr)
+	json.Unmarshal(userStruct, &userdata)
 	userKeyPrime := userlib.Argon2Key([]byte(password), []byte(username), 32)
 
 	//if passwords do not match, error
@@ -262,14 +262,14 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	userlib.DatastoreSet(fileUUID, packaged_data)
 
 	//add file metadata to CreatedFile instance
-	if !overwrite{
+	if !overwrite {
 		metadata := CreatedFile{fileUUID, key, filename}
 		userdata.Created = append(userdata.Created, metadata)
 	}
 
 	//update User struct in Datastore
-	//marshallUserData, _ := json.Marshal(userdata)
-	//userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
+	marshallUserData, _ := json.Marshal(userdata)
+	userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
 
 	return
 }
@@ -411,6 +411,7 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 
 	//look for file in created table
 	for _, createdfile := range userdata.Created {
+
 		if createdfile.FileName == filename {
 			key = createdfile.FileKey 
 			fileUUID = createdfile.FileUUID

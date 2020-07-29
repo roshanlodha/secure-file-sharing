@@ -13,7 +13,7 @@ import (
 	"github.com/cs161-staff/userlib"
 	_ "encoding/json"
 	_ "encoding/hex"
-	_ "github.com/google/uuid"
+	"github.com/google/uuid"
 	_ "strings"
 	_ "errors"
 	_ "strconv"
@@ -483,36 +483,24 @@ func TestReceiveFile(t *testing.T) {
 func TestMultipleUsers(t *testing.T) {
 	clear()
 
-	_, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
+	roshanU1, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
 	if err != nil {
 		t.Error("Failed to initialize user", err)
 		return
 	}
-
-	_, err2 := InitUser("Ganesh", "securityIzFuN!!")
+	
+	ganeshU1, err2 := InitUser("Ganesh", "securityIzFuN!!")
 	if err2 != nil {
 		t.Error("Failed to initialize user", err2)
 		return
 	}
-
-	roshanU1, err3 := GetUser("Roshan", "mEdiCineIzMyPaSSIon")
-	if err3 != nil {
-		t.Error("Failed to get user", err3)
-		return
-	}
-
+	
 	roshanU2, err4 := GetUser("Roshan", "mEdiCineIzMyPaSSIon")
 	if err4 != nil {
 		t.Error("Failed to get user", err4)
 		return
 	}
-
-	ganeshU1, err5 := GetUser("Ganesh", "securityIzFuN!!")
-	if err5 != nil {
-		t.Error("Failed to get user", err5)
-		return
-	}
-
+	
 	ganeshU2, err6 := GetUser("Ganesh", "securityIzFuN!!")
 	if err2 != nil {
 		t.Error("Failed to get user", err6)
@@ -521,6 +509,12 @@ func TestMultipleUsers(t *testing.T) {
 
 	v := []byte("This is a test")
 	roshanU1.StoreFile("file1", v)
+
+	_, err14:= roshanU2.LoadFile("file1")
+	if err14 != nil {
+		t.Error("Failed to download file", err14)
+		return
+	}
 
 	accTok, err7 := roshanU1.ShareFile("file1", "Ganesh")
 	if err7 != nil {
@@ -549,12 +543,6 @@ func TestMultipleUsers(t *testing.T) {
 	_, err13:= roshanU1.LoadFile("file1")
 	if err13 != nil {
 		t.Error("Failed to download file", err13)
-		return
-	}
-
-	_, err14:= roshanU2.LoadFile("file1")
-	if err14 != nil {
-		t.Error("Failed to download file", err14)
 		return
 	}
 
@@ -652,7 +640,7 @@ func TestMultipleUsers(t *testing.T) {
 		t.Error("Downloaded file after access was revoked", err29)
 		return
 	}
-
+	
 
 
 }
@@ -788,11 +776,9 @@ func TestSameFileName(t *testing.T) {
 	}
 }
 
-/*
-func TestFileDataIntegrity(t *testing.T) {
-	clear()
 
-	var file File
+func TestFileDeleted(t *testing.T) {
+	clear()
 
 	u, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
 	if err != nil {
@@ -806,22 +792,12 @@ func TestFileDataIntegrity(t *testing.T) {
 	hashedFileID := userlib.Hash([]byte("file1" + "Roshan"))
 	fileUUID, _ := uuid.FromBytes([]byte(hashedFileID[:16]))
 
-	filestruct, _ := userlib.DatastoreGet(fileUUID)
-	json.Unmarshal(filestruct, &file)
-
-	v2 := []byte("Ganesh hacked the file!!")
-
-	file.FileData = v2
-
-	hackedFile, _ := json.Marshal(file)
-	userlib.DatastoreSet(fileUUID, hackedFile)
-	
+	userlib.DatastoreDelete(fileUUID)
 	
 	_, err2 := u.LoadFile("file1")
 	if err2 == nil {
-		t.Error("Roshan didn't notice the filecontents were hacked!!", err2)
+		t.Error("Roshan didn't notice the file was deleted!!", err2)
 		return
 	}
 
 }
-*/
