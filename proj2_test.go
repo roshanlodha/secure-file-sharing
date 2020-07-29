@@ -948,12 +948,6 @@ func TestShareComplex(t *testing.T) {
 		return
 	}
 
-	c, err4 := InitUser("C", "CCCC")
-	if err4 != nil {
-		t.Error("Failed to initialize user", err4)
-		return
-	}
-
 	v := []byte("This is a test")
 	r.StoreFile("file1", v)
 
@@ -993,17 +987,6 @@ func TestShareComplex(t *testing.T) {
 		return
 	}
 
-	accTok4, err11 := b.ShareFile("file1", "C")
-	if err11 != nil {
-		t.Error("Failed to share file", err11)
-		return
-	}
-
-	err12 := c.ReceiveFile("file1", "B", accTok4)
-	if err12 != nil {
-		t.Error("Failed to receive file", err12)
-		return
-	}
 
 	_, err13 := r.LoadFile("file1")
 	if err13 != nil {
@@ -1029,11 +1012,6 @@ func TestShareComplex(t *testing.T) {
 		return
 	}
 
-	_, err17 := c.LoadFile("file1")
-	if err17 != nil {
-		t.Error("Failed to load", err17)
-		return
-	}
 
 	err18 := r.RevokeFile("file1", "Ganesh")
 	if err18 != nil {
@@ -1059,11 +1037,6 @@ func TestShareComplex(t *testing.T) {
 		return
 	}
 
-	_, err22 := c.LoadFile("file1")
-	if err22 == nil {
-		t.Error("Loaded file after revoking", err22)
-		return
-	}
 
 }
 
