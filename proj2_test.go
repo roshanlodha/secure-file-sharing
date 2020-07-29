@@ -564,5 +564,127 @@ func TestRevokeFile(t *testing.T) {
 		return
 	}
 
+}
+/*
+func TestFileDataIntegrity(t *testing.T) {
+	clear()
+
+
+	var file File
+
+	u, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+	return
+	}
+
+
+	v := []byte("This is a test")
+	u.StoreFile("file1", v)
+
+	hashedFileID := userlib.Hash([]byte("file1" + "Roshan"))
+	fileUUID, _ := uuid.FromBytes([]byte(hashedFileID[:16]))
+
+	filestruct, _ := userlib.DatastoreGet(fileUUID)
+	json.Unmarshal(filestruct, &file)
+
+	v2 := []byte("Ganesh hacked the file!!")
+
+	file.FileData = v2
+
+	hackedFile, _ := json.Marshal(file)
+	userlib.DatastoreSet(fileUUID, hackedFile)
+	
+	
+	_, err2 := u.LoadFile("file1")
+	if err2 == nil {
+		t.Error("Roshan didn't notice the filecontents were hacked!!", err2)
+		return
+	}
 
 }
+*/
+
+func TestMultipleUsers(t *testing.T) {
+	clear()
+
+	_, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+
+	_, err2 := InitUser("Ganesh", "securityIzFuN!!")
+	if err2 != nil {
+		t.Error("Failed to initialize user", err2)
+		return
+	}
+
+	roshanU1, err3 := GetUser("Roshan", "mEdiCineIzMyPaSSIon")
+	if err3 != nil {
+		t.Error("Failed to get user", err3)
+		return
+	}
+
+	roshanU2, err4 := GetUser("Roshan", "mEdiCineIzMyPaSSIon")
+	if err4 != nil {
+		t.Error("Failed to get user", err4)
+		return
+	}
+
+	ganeshU1, err5 := GetUser("Ganesh", "securityIzFuN!!")
+	if err5 != nil {
+		t.Error("Failed to get user", err5)
+		return
+	}
+
+	ganeshU2, err6 := GetUser("Ganesh", "securityIzFuN!!")
+	if err2 != nil {
+		t.Error("Failed to get user", err6)
+		return
+	}
+
+
+
+	v := []byte("This is a test")
+	roshanU1.StoreFile("file1", v)
+
+	accTok, err7 := roshanU1.ShareFile("file1", "Ganesh")
+	if err7 != nil {
+		t.Error("Failed to share file", err7)
+		return
+	}
+
+	err10 := ganeshU1.ReceiveFile("file1", "Roshan", accTok)
+	if err10 != nil {
+		t.Error("Failed to receive file", err10)
+		return
+	}
+
+	_, err11 := ganeshU1.LoadFile("file1")
+	if err11 != nil {
+		t.Error("Failed to download file", err11)
+		return
+	}
+
+	_, err12 := ganeshU2.LoadFile("file1")
+	if err12 != nil {
+		t.Error("Failed to download file", err12)
+		return
+	}
+
+	_, err13:= roshanU1.LoadFile("file1")
+	if err13 != nil {
+		t.Error("Failed to download file", err13)
+		return
+	}
+
+	_, err14:= roshanU2.LoadFile("file1")
+	if err14 != nil {
+		t.Error("Failed to download file", err14)
+		return
+	}
+
+}
+
+
