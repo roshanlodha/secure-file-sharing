@@ -480,6 +480,178 @@ func TestReceiveFile(t *testing.T) {
 
 }
 
+func TestMultipleUsers(t *testing.T) {
+	clear()
+
+	_, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+
+	_, err2 := InitUser("Ganesh", "securityIzFuN!!")
+	if err2 != nil {
+		t.Error("Failed to initialize user", err2)
+		return
+	}
+
+	roshanU1, err3 := GetUser("Roshan", "mEdiCineIzMyPaSSIon")
+	if err3 != nil {
+		t.Error("Failed to get user", err3)
+		return
+	}
+
+	roshanU2, err4 := GetUser("Roshan", "mEdiCineIzMyPaSSIon")
+	if err4 != nil {
+		t.Error("Failed to get user", err4)
+		return
+	}
+
+	ganeshU1, err5 := GetUser("Ganesh", "securityIzFuN!!")
+	if err5 != nil {
+		t.Error("Failed to get user", err5)
+		return
+	}
+
+	ganeshU2, err6 := GetUser("Ganesh", "securityIzFuN!!")
+	if err2 != nil {
+		t.Error("Failed to get user", err6)
+		return
+	}
+
+	v := []byte("This is a test")
+	roshanU1.StoreFile("file1", v)
+
+	accTok, err7 := roshanU1.ShareFile("file1", "Ganesh")
+	if err7 != nil {
+		t.Error("Failed to share file", err7)
+		return
+	}
+
+	err10 := ganeshU1.ReceiveFile("file1", "Roshan", accTok)
+	if err10 != nil {
+		t.Error("Failed to receive file", err10)
+		return
+	}
+
+	_, err11 := ganeshU1.LoadFile("file1")
+	if err11 != nil {
+		t.Error("Failed to download file", err11)
+		return
+	}
+
+	_, err12 := ganeshU2.LoadFile("file1")
+	if err12 != nil {
+		t.Error("Failed to download file", err12)
+		return
+	}
+
+	_, err13:= roshanU1.LoadFile("file1")
+	if err13 != nil {
+		t.Error("Failed to download file", err13)
+		return
+	}
+
+	_, err14:= roshanU2.LoadFile("file1")
+	if err14 != nil {
+		t.Error("Failed to download file", err14)
+		return
+	}
+
+	_, err15 := InitUser("Neil", "I love working as a Walmart cashier!!")
+	if err15 != nil {
+		t.Error("Failed to initialize user", err15)
+		return
+	}
+
+	neilU1, err16 := GetUser("Neil", "I love working as a Walmart cashier!!")
+	if err16 != nil {
+		t.Error("Failed to get user", err16)
+		return
+	}
+
+	neilU2, err17 := GetUser("Neil", "I love working as a Walmart cashier!!")
+	if err17 != nil {
+		t.Error("Failed to get user", err17)
+		return
+	}
+
+	accTok2, err18 := ganeshU1.ShareFile("file1", "Neil")
+	if err18 != nil {
+		t.Error("Failed to share file", err18)
+		return
+	}
+
+	err19 := neilU1.ReceiveFile("file2", "Ganesh", accTok2)
+	if err19 != nil {
+		t.Error("Failed to receive file", err19)
+		return
+	}
+
+	_, err20 := neilU1.LoadFile("file2")
+	if err20 != nil {
+		t.Error("Failed to download file", err20)
+		return
+	}
+
+	_, err21 := neilU2.LoadFile("file2")
+	if err21 != nil {
+		t.Error("Failed to download file", err21)
+		return
+	}
+
+	err22 := ganeshU2.RevokeFile("file1", "Roshan")
+	if err22 == nil {
+		t.Error("Tried to revoke access from creator", err22)
+		return
+	}
+
+	err23 := neilU2.RevokeFile("file2", "Ganesh")
+	if err23 == nil {
+		t.Error("Tried to revoke access when user was not creator", err23)
+		return
+	}
+
+	err24 := neilU1.RevokeFile("file2", "Ganesh")
+	if err24 == nil {
+		t.Error("Tried to revoke access when user was not creator", err24)
+		return
+	}
+
+	err25 := roshanU2.RevokeFile("file1", "Ganesh")
+	if err25 != nil {
+		t.Error("Failed to revoke access", err25)
+		return
+	}
+	/*
+	_, err26 := neilU1.LoadFile("file2")
+	if err26 == nil {
+		t.Error("Downloaded file after access was revoked", err26)
+		return
+	}
+
+	_, err27 := neilU2.LoadFile("file2")
+	if err27 == nil {
+		t.Error("Downloaded file after access was revoked", err27)
+		return
+	}
+*/
+	_, err28 := ganeshU1.LoadFile("file1")
+	if err28 == nil {
+		t.Error("Downloaded file after access was revoked", err28)
+		return
+	}
+
+	_, err29 := ganeshU2.LoadFile("file1")
+	if err29 == nil {
+		t.Error("Downloaded file after access was revoked", err29)
+		return
+	}
+
+
+
+}
+
 func TestRevokeFile(t *testing.T) {
 	clear()
 

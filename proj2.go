@@ -722,6 +722,7 @@ func (userdata *User) RevokeFile(filename string, target_username string) (err e
 	accessUUID, _ := uuid.FromBytes([]byte(magic_string))
 	userlib.DatastoreDelete(accessUUID)
 
+
 	return err
 
 }
