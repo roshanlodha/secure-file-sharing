@@ -743,6 +743,51 @@ func TestRevokeFile(t *testing.T) {
 
 }
 
+func TestSameFileName(t *testing.T) {
+	clear()
+
+
+	u, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+
+	u1, err1 := InitUser("Ganesh", "securityIzFuN!!")
+	if err1 != nil {
+		t.Error("Failed to initialize user", err1)
+		return
+	}
+
+	v := []byte("This is a test")
+	u.StoreFile("file1", v)
+
+	v1 := []byte("This is a test of same name different contents")
+	u1.StoreFile("file1", v1)
+
+	v2, err2 := u.LoadFile("file1")
+	if err2 != nil {
+		t.Error("Failed to download file", err2)
+		return
+	}
+
+	v3, err3 := u1.LoadFile("file1")
+	if err3 != nil {
+		t.Error("Failed to download file", err3)
+		return
+	}
+
+	if string(v) != string(v2) {
+		t.Error("Filecontents do not match", err2)
+		return
+	}
+
+	if string(v1) != string(v3) {
+		t.Error("Filecontents do not match", err3)
+		return
+	}
+}
+
 /*
 func TestFileDataIntegrity(t *testing.T) {
 	clear()
