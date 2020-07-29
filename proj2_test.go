@@ -11,9 +11,9 @@ import (
 	"testing"
 	"reflect"
 	"github.com/cs161-staff/userlib"
-	_ "encoding/json"
+	 "encoding/json"
 	_ "encoding/hex"
-	_ "github.com/google/uuid"
+	 "github.com/google/uuid"
 	_ "strings"
 	_ "errors"
 	_ "strconv"
@@ -623,7 +623,7 @@ func TestMultipleUsers(t *testing.T) {
 		t.Error("Failed to revoke access", err25)
 		return
 	}
-	/*
+	
 	_, err26 := neilU1.LoadFile("file2")
 	if err26 == nil {
 		t.Error("Downloaded file after access was revoked", err26)
@@ -635,7 +635,7 @@ func TestMultipleUsers(t *testing.T) {
 		t.Error("Downloaded file after access was revoked", err27)
 		return
 	}
-*/
+
 	_, err28 := ganeshU1.LoadFile("file1")
 	if err28 == nil {
 		t.Error("Downloaded file after access was revoked", err28)
@@ -736,5 +736,42 @@ func TestRevokeFile(t *testing.T) {
 		return
 	}
 
+}
+
+func TestFileDataIntegrity(t *testing.T) {
+	clear()
+
+
+	var file File
+
+	u, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+	return
+	}
+
+
+	v := []byte("This is a test")
+	u.StoreFile("file1", v)
+
+	hashedFileID := userlib.Hash([]byte("file1" + "Roshan"))
+	fileUUID, _ := uuid.FromBytes([]byte(hashedFileID[:16]))
+
+	filestruct, _ := userlib.DatastoreGet(fileUUID)
+	json.Unmarshal(filestruct, &file)
+
+	v2 := []byte("Ganesh hacked the file!!")
+
+	file.FileData = v2
+
+	hackedFile, _ := json.Marshal(file)
+	userlib.DatastoreSet(fileUUID, hackedFile)
+	
+	
+	_, err2 := u.LoadFile("file1")
+	if err2 == nil {
+		t.Error("Roshan didn't notice the filecontents were hacked!!", err2)
+		return
+	}
 
 }
