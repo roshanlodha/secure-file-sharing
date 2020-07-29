@@ -490,19 +490,24 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 
 	//unmarshall file and decrypt FileData
 	json.Unmarshal(packaged_data, &file)
+
+	/*
+	//verification
+	verkey, ok := userlib.KeystoreGet(file.Editor+"verify")
+	if !ok {
+		return nil, errors.New(strings.ToTitle("Could not get public verify key"))
+	}
+	ver := userlib.DSVerify(verkey, []byte(file.FileData), file.Signature)
+	if ver != nil {
+		return nil, errors.New(strings.ToTitle("File corrupted!"))
+	}
+	*/
+
 	data = append(data, userlib.SymDec(key, file.FileData)...)
 
 	//load data from next edits
 	nullUUID, _ := uuid.FromBytes([]byte("nullUUID"))
 	for file.NextEdit != nullUUID {
-		//verification
-		/*
-		verkey, temperr := userlib.KeystoreGet(file.Editor+"verify")
-		ver := userlib.DSVerify(verkey, []byte(file.FileData), file.Signature)
-		if ver != nil {
-			return nil, errors.New(strings.ToTitle("File corrupted!"))
-		}
-		*/
 
 		//building file content
 		packaged_data, _ := userlib.DatastoreGet(file.NextEdit)
