@@ -127,6 +127,19 @@ type File struct {
 	ContentSign []byte
 }
 
+// This updates the User struct in datastore.
+//
+// Helper function to handle multiple instances of same user.
+func updateUser(userdata *User) {
+	//get userUUID
+	temp := userlib.Hash([]byte(userdata.Username))
+	userID, _ := uuid.FromBytes(temp[:16])
+	
+	//marshal user and set in datastore
+	packaged_data, _ := json.Marshal(userdata)
+	userlib.DatastoreSet(userID, packaged_data)
+}
+
 // This creates a user.  It will only be called once for a user
 // (unless the keystore and datastore are cleared during testing purposes)
 
@@ -251,6 +264,9 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	//add file metadata to CreatedFile instance
 	metadata := CreatedFile{fileUUID, key, filename}
 	userdata.Created = append(userdata.Created, metadata)
+
+	//multiple instance check - update userdata in DataStore 
+	updateUser(userdata)
 
 	return
 }
@@ -537,6 +553,9 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 	//sf.TokenSign, _ = userlib.DSSign(userdata.SignKey, []byte(sf.MagicString)) 
 	userdata.Shared = append(userdata.Shared, sf)
 
+	//multiple instance check - update userdata in DataStore 
+	updateUser(userdata)
+
 	return magic_string, err
 }
 
@@ -605,6 +624,9 @@ func (userdata *User) ReceiveFile(filename string, sender string,
 	receivedfile.AccessUUID = accessUUID
 	userdata.Received = append(userdata.Received, receivedfile)
 
+	//multiple instance check - update userdata in DataStore 
+	updateUser(userdata)
+	
 	return nil
 }
 
