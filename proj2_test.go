@@ -603,7 +603,7 @@ func TestFileDataIntegrity(t *testing.T) {
 	}
 
 }
-*/
+
 
 func TestMultipleUsers(t *testing.T) {
 	clear()
@@ -686,5 +686,5 @@ func TestMultipleUsers(t *testing.T) {
 	}
 
 }
-
+*/
 
