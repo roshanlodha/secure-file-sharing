@@ -800,4 +800,61 @@ func TestFileDeleted(t *testing.T) {
 		return
 	}
 
+	v2 := []byte("appending this")
+
+	err6 := u.AppendFile("file1", v2)
+	if err6 == nil {
+		t.Error("Appended to the file that was deleted", err6)
+		return
+	}
+
+}
+
+func TestFileIntegrity(t *testing.T) {
+	clear()
+
+	u, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+	return
+	}
+
+	v := []byte("This is a test")
+	u.StoreFile("file1", v)
+
+	v2 := []byte("Test this is")
+	u.StoreFile("file2", v2)
+
+	hashedFileID := userlib.Hash([]byte("file1" + "Roshan"))
+	fileUUID, _ := uuid.FromBytes([]byte(hashedFileID[:16]))
+
+	hashedFileID2 := userlib.Hash([]byte("file2" + "Roshan"))
+	fileUUID2, _ := uuid.FromBytes([]byte(hashedFileID2[:16]))
+
+	f1, _ := userlib.DatastoreGet(fileUUID)
+	f2, _ := userlib.DatastoreGet(fileUUID2)
+
+	userlib.DatastoreSet(fileUUID, f2)
+	userlib.DatastoreSet(fileUUID2, f1)
+	
+	_, err2 := u.LoadFile("file1")
+	if err2 == nil {
+		t.Error("Roshan didn't notice the file was swapped", err2)
+		return
+	}
+
+	_, err3 := u.LoadFile("file2")
+	if err3 == nil {
+		t.Error("Roshan didn't notice the file was swapped", err3)
+		return
+	}
+
+	v3 := []byte("appending this")
+
+	err6 := u.AppendFile("file1", v3)
+	if err6 == nil {
+		t.Error("Appended to the file that was swapped", err6)
+		return
+	}
+
 }
