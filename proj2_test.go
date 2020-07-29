@@ -858,7 +858,7 @@ func TestFileIntegrity(t *testing.T) {
 	}
 
 }
-
+/*
 func TestFileIntegrityComplex(t *testing.T) {
 	clear()
 
@@ -919,3 +919,43 @@ func TestFileIntegrityComplex(t *testing.T) {
 	}
 
 }
+
+func TestShareComplex(t *testing.T) {
+	clear()
+
+	u, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
+	if err != nil {
+		t.Error("Failed to initialize user", err)
+		return
+	}
+
+	u1, err1 := InitUser("Ganesh", "securityIzFuN!!")
+	if err1 != nil {
+		t.Error("Failed to initialize user", err1)
+		return
+	}
+
+	u2, err2 := InitUser("A", "AAAA")
+	if err2 != nil {
+		t.Error("Failed to initialize user", err2)
+		return
+	}
+
+	u3, err3 := InitUser("B", "BBBB")
+	if err3 != nil {
+		t.Error("Failed to initialize user", err3)
+		return
+	}
+
+	u4, err4 := InitUser("C", "CCCC")
+	if err4 != nil {
+		t.Error("Failed to initialize user", err4)
+		return
+	}
+
+	v := []byte("This is a test")
+	u.StoreFile("file1", v)
+
+}
+
+*/
