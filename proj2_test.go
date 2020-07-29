@@ -919,43 +919,151 @@ func TestFileIntegrityComplex(t *testing.T) {
 	}
 
 }
+*/
 
 func TestShareComplex(t *testing.T) {
 	clear()
 
-	u, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
+	r, err := InitUser("Roshan", "mEdiCineIzMyPaSSIon")
 	if err != nil {
 		t.Error("Failed to initialize user", err)
 		return
 	}
 
-	u1, err1 := InitUser("Ganesh", "securityIzFuN!!")
+	g, err1 := InitUser("Ganesh", "securityIzFuN!!")
 	if err1 != nil {
 		t.Error("Failed to initialize user", err1)
 		return
 	}
 
-	u2, err2 := InitUser("A", "AAAA")
+	a, err2 := InitUser("A", "AAAA")
 	if err2 != nil {
 		t.Error("Failed to initialize user", err2)
 		return
 	}
 
-	u3, err3 := InitUser("B", "BBBB")
+	b, err3 := InitUser("B", "BBBB")
 	if err3 != nil {
 		t.Error("Failed to initialize user", err3)
 		return
 	}
 
-	u4, err4 := InitUser("C", "CCCC")
+	c, err4 := InitUser("C", "CCCC")
 	if err4 != nil {
 		t.Error("Failed to initialize user", err4)
 		return
 	}
 
 	v := []byte("This is a test")
-	u.StoreFile("file1", v)
+	r.StoreFile("file1", v)
+
+	accTok, err5 := r.ShareFile("file1", "Ganesh")
+	if err5 != nil {
+		t.Error("Failed to share file", err5)
+		return
+	}
+
+	err6 := g.ReceiveFile("file1", "Roshan", accTok)
+	if err6 != nil {
+		t.Error("Failed to receive file", err6)
+		return
+	}
+
+	accTok2, err7 := g.ShareFile("file1", "A")
+	if err7 != nil {
+		t.Error("Failed to share file", err7)
+		return
+	}
+
+	err8 := a.ReceiveFile("file1", "Ganesh", accTok2)
+	if err8 != nil {
+		t.Error("Failed to receive file", err8)
+		return
+	}
+
+	accTok3, err9 := a.ShareFile("file1", "B")
+	if err9 != nil {
+		t.Error("Failed to share file", err9)
+		return
+	}
+
+	err10 := b.ReceiveFile("file1", "A", accTok3)
+	if err10 != nil {
+		t.Error("Failed to receive file", err10)
+		return
+	}
+
+	accTok4, err11 := b.ShareFile("file1", "C")
+	if err11 != nil {
+		t.Error("Failed to share file", err11)
+		return
+	}
+
+	err12 := c.ReceiveFile("file1", "B", accTok4)
+	if err12 != nil {
+		t.Error("Failed to receive file", err12)
+		return
+	}
+
+	_, err13 := r.LoadFile("file1")
+	if err13 != nil {
+		t.Error("Failed to load", err13)
+		return
+	}
+
+	_, err14 := g.LoadFile("file1")
+	if err14 !=nil {
+		t.Error("Failed to load", err14)
+		return
+	}
+
+	_, err15 := a.LoadFile("file1")
+	if err15 !=nil {
+		t.Error("Failed to load", err15)
+		return
+	}
+
+	_, err16 := b.LoadFile("file1")
+	if err16 != nil {
+		t.Error("Failed to load", err16)
+		return
+	}
+
+	_, err17 := c.LoadFile("file1")
+	if err17 != nil {
+		t.Error("Failed to load", err17)
+		return
+	}
+
+	err18 := r.RevokeFile("file1", "Ganesh")
+	if err18 != nil {
+		t.Error("Failed to revoke access", err18)
+		return
+	}
+
+	_, err19 := g.LoadFile("file1")
+	if err19 == nil {
+		t.Error("Loaded file after revoking", err19)
+		return
+	}
+
+	_, err20 := a.LoadFile("file1")
+	if err20 == nil {
+		t.Error("Loaded file after revoking", err20)
+		return
+	}
+
+	_, err21 := b.LoadFile("file1")
+	if err21 == nil {
+		t.Error("Loaded file after revoking", err21)
+		return
+	}
+
+	_, err22 := c.LoadFile("file1")
+	if err22 == nil {
+		t.Error("Loaded file after revoking", err22)
+		return
+	}
 
 }
 
-*/
