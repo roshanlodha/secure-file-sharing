@@ -11,9 +11,9 @@ import (
 	"testing"
 	"reflect"
 	"github.com/cs161-staff/userlib"
-	_ "encoding/json"
+	"encoding/json"
 	_ "encoding/hex"
-	_ "github.com/google/uuid"
+	"github.com/google/uuid"
 	_ "strings"
 	_ "errors"
 	_ "strconv"
@@ -788,7 +788,7 @@ func TestSameFileName(t *testing.T) {
 	}
 }
 
-/*
+
 func TestFileDataIntegrity(t *testing.T) {
 	clear()
 
@@ -824,5 +824,3 @@ func TestFileDataIntegrity(t *testing.T) {
 	}
 
 }
-
-*/
