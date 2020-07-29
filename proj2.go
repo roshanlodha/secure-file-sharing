@@ -268,8 +268,8 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	}
 
 	//update User struct in Datastore
-	marshallUserData, _ := json.Marshal(userdata)
-	userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
+	//marshallUserData, _ := json.Marshal(userdata)
+	//userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
 
 	return
 }
@@ -565,8 +565,8 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 	userdata.Shared = append(userdata.Shared, sf)
 
 	//update User struct in Datastore
-	marshallUserData, _ := json.Marshal(userdata)
-	userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
+	//marshallUserData, _ := json.Marshal(userdata)
+	//userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
 
 	return magic_string, err
 }
@@ -641,8 +641,8 @@ func (userdata *User) ReceiveFile(filename string, sender string,
 	userdata.Received = append(userdata.Received, receivedfile)
 
 	//update User struct in Datastore
-	marshallUserData, _ := json.Marshal(userdata)
-	userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
+	//marshallUserData, _ := json.Marshal(userdata)
+	//userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
 
 	return nil
 }
@@ -688,8 +688,8 @@ func (userdata *User) RevokeFile(filename string, target_username string) (err e
 	userdata.Shared = userdata.Shared[:len(userdata.Shared)-1]
 
 	//update User struct in Datastore
-	marshallUserData, _ := json.Marshal(userdata)
-	userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
+	//marshallUserData, _ := json.Marshal(userdata)
+	//userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
 
 	return err
 
