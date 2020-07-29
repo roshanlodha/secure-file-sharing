@@ -919,7 +919,7 @@ func TestFileIntegrityComplex(t *testing.T) {
 	}
 
 }
-*/
+
 
 func TestShareComplex(t *testing.T) {
 	clear()
@@ -987,7 +987,6 @@ func TestShareComplex(t *testing.T) {
 		return
 	}
 
-
 	_, err13 := r.LoadFile("file1")
 	if err13 != nil {
 		t.Error("Failed to load", err13)
@@ -1011,7 +1010,6 @@ func TestShareComplex(t *testing.T) {
 		t.Error("Failed to load", err16)
 		return
 	}
-
 
 	err18 := r.RevokeFile("file1", "Ganesh")
 	if err18 != nil {
@@ -1037,6 +1035,7 @@ func TestShareComplex(t *testing.T) {
 		return
 	}
 
-
 }
+
+*/
 
