@@ -244,7 +244,16 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 // should NOT be revealed to the datastore!
 func (userdata *User) StoreFile(filename string, data []byte) {
 	var file File
-	key := userlib.RandomBytes(16) 
+	key := userlib.RandomBytes(16)
+	var overwrite bool 
+
+	//check if file already exists
+	for _, file := range userdata.Created {
+		if file.FileName == filename {
+			overwrite = true
+			key = file.FileKey
+		}
+	}
 
 	//hash filename||username for confidentiality and file UUID
 	hashedFileID := userlib.Hash([]byte(filename + userdata.Username))
@@ -264,6 +273,12 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	//add file metadata to CreatedFile instance
 	metadata := CreatedFile{fileUUID, key, filename}
 	userdata.Created = append(userdata.Created, metadata)
+
+	//add file metadata to CreatedFile instance
+	if !overwrite{
+		metadata := CreatedFile{fileUUID, key, filename}
+		userdata.Created = append(userdata.Created, metadata)
+	}
 
 	//multiple instance check - update userdata in DataStore 
 	updateUser(userdata)

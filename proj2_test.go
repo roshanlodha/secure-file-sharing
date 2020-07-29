@@ -623,10 +623,15 @@ func TestMultipleUsers(t *testing.T) {
 		t.Error("Failed to revoke access", err25)
 		return
 	}
+	_, err25point5 := ganeshU2.LoadFile("file1")
+	if err25point5 == nil {
+		t.Error("Failed to revoke access", err25point5)
+		return
+	}
 	
 	_, err26 := neilU1.LoadFile("file2")
 	if err26 == nil {
-		t.Error("Downloaded file after access was revoked", err26)
+		t.Error("Grandchild downloaded file after child access was revoked", err26)
 		return
 	}
 
