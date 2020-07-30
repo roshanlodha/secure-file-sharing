@@ -85,10 +85,28 @@ func bytesToUUID(data []byte) (ret uuid.UUID) {
 // The structure definition for a user record
 type User struct {
 	Username string
+	Created []CreatedFile
+	UserUUID uuid.UUID
+	SaltedPassword []byte
+	DecKey userlib.PKEDecKey
+	SignKey userlib.DSSignKey
 
 	// You can add other fields here if you want...
 	// Note for JSON to marshal/unmarshal, the fields need to
 	// be public (start with a capital letter)
+}
+
+type File struct {
+	FileData []byte
+	Creator string
+	NextEdit uuid.UUID
+	FinalEdit uuid.UUID
+}
+
+type CreatedFile struct {
+	FileUUID uuid.UUID
+	FileKey []byte
+	FileName string
 }
 
 // This creates a user.  It will only be called once for a user
@@ -118,9 +136,9 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	}
 
 	//store unique UUID
-	userdata.UserUUID = uuid.FromBytes(hashedUsername[:16])
+	userdata.UserUUID, _ = uuid.FromBytes(hashedUsername[:16])
 	_, ok := userlib.DatastoreGet(userdata.UserUUID)
-	if !ok {
+	if ok {
 		return nil, errors.New("User already exists!")
 	}
 
@@ -137,11 +155,11 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	_ = userlib.KeystoreSet(username+"ver", VerifyKey)
 
 	//generate a (deterministic) keys to encrypt and MAC User
-	usersymkey, _ = userlib.HashKDF(userdata.SaltedPassword, []byte("enc"))
-	usermackey, _ = userlib.HashKDF(userdata.SaltedPassword, []byte("mac"))
+	usersymkey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("enc"))
+	usermackey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("mac"))
 
 	//marshall user 
-	marshalledUser, _ = json.Marshal(userdata)
+	marshalledUser, _ := json.Marshal(userdata)
 
 	//encrypt and mac user struct
 	encyptedUser := userlib.SymEnc(usersymkey, userlib.RandomBytes(16), marshalledUser)
@@ -161,6 +179,41 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	var userdata User
 	userdataptr = &userdata
 
+	//generate user's unique ID via Hash(username)
+	hashedUsername := userlib.Hash([]byte(username))
+	if len(hashedUsername) < 16 { //checks if username is empty
+		return nil, errors.New("Username must not be empty!")
+	}
+	//use random data to get len of mac
+	randomMAC, _ := userlib.HMACEval(userlib.RandomBytes(16), []byte("whyisthisprojectsohard"))
+
+	//retrieve user struct
+	temp, _ := uuid.FromBytes(hashedUsername[:16])
+	encryptedMACedUser, ok := userlib.DatastoreGet(temp)
+	if (!ok) || (len(encryptedMACedUser) <= len(randomMAC)) {
+		return nil, errors.New("User not found or corrupted!")
+	}
+
+	//generate salted password to generate keys via HKDF and to check pwd match
+	saltedPassword := userlib.Argon2Key([]byte(password), []byte(username), 16)
+	//generate a (deterministic) keys to decrypt and Verify User
+	usersymkey, _ := userlib.HashKDF(saltedPassword, []byte("enc"))
+	usermackey, _ := userlib.HashKDF(saltedPassword, []byte("mac"))
+
+	//seperate user struct from MAC
+	encyptedUser := encryptedMACedUser[:len(encryptedMACedUser)-len(randomMAC)]
+	userMAC := encryptedMACedUser[len(encryptedMACedUser)-len(randomMAC):]
+
+	//verify user
+	MACencryptedUser, _ := userlib.HMACEval(usermackey, encyptedUser)
+	if !userlib.HMACEqual(MACencryptedUser, userMAC) {
+		return nil, errors.New("User data corrupted!")
+	}
+
+	//decrypt user and unmarshal at userdataptr
+	decryptedUser := userlib.SymDec(usersymkey, encyptedUser)
+	json.Unmarshal(decryptedUser, userdataptr)
+
 	return userdataptr, nil
 }
 
@@ -169,12 +222,38 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 // The plaintext of the filename + the plaintext and length of the filename 
 // should NOT be revealed to the datastore!
 func (userdata *User) StoreFile(filename string, data []byte) {
+/*
+	var cf CreatedFile
+	var exists bool
 
-	//TODO: This is a toy implementation.
-	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
-	packaged_data, _ := json.Marshal(data)
-	userlib.DatastoreSet(UUID, packaged_data)
-	//End of toy implementation
+	//check if file already exists with user
+	for _, createdFile := range userdata.Created {
+		if createdFile.FileName == filename {
+			exists = true
+			cf = createdFile
+		}
+	}
+
+	if exists {
+
+		//use HKDF to generate symmetric encryption and mac keys
+		k := []byte(cf.FileUUID.String())[:16]
+		k1, _ := userlib.HashKDF(k, []byte("fenc"))
+		k2, _ := userlib.HashKDF(k, []byte("fmac"))
+
+		//shorten keys to 16 bytes so they can be used
+		fSymEncrypt = k1[:16]
+		fMac = k2[:16]
+
+		f, ok := userlib.DatastoreGet(cf.FileUUID)
+		
+
+
+	} else {
+
+	}
+
+	*/
 
 	return
 }
