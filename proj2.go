@@ -85,7 +85,7 @@ func bytesToUUID(data []byte) (ret uuid.UUID) {
 // The structure definition for a user record
 type User struct {
 	Username string
-	Userkey []byte
+	SaltedPassword []byte
 	UserUUID uuid.UUID
 	DecKey userlib.PKEDecKey
 	SignKey userlib.DSSignKey
@@ -150,28 +150,48 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	var VerifyKey userlib.DSVerifyKey
 
 	var userID uuid.UUID
-	var userinfo []byte
 
-	temp := userlib.Hash([]byte(username))
-	userID, err = uuid.FromBytes(temp[:16])
+	//generate user's unique ID via Hash(username)
+	hashedUsername := userlib.Hash([]byte(username))
+	if len(hashedUsername) < 16 { //checks if username is empty
+		return nil, errors.New("Username must not be empty!")
+	}
+
+	userID, err = uuid.FromBytes(hashedUsername[:16])
 	_, ok := userlib.DatastoreGet(userID)
 	if ok {
 		return &userdata, errors.New("User with this username already exists!")
 	}
 
 	userdata.Username = username
-	userdata.Userkey = userlib.Argon2Key([]byte(password), []byte(username), 32)
+	userdata.SaltedPassword = userlib.Argon2Key([]byte(password), []byte(username), 16)
 	userdata.UserUUID = userID
 	
-	EncKey, userdata.DecKey, err = userlib.PKEKeyGen()
-	err = userlib.KeystoreSet(username+"enc", EncKey)
+	//generate and store RSA Enc, Dec keys	
+	EncKey, userdata.DecKey, _ = userlib.PKEKeyGen()
+	_ = userlib.KeystoreSet(username+"enc", EncKey)
 
-	userdata.SignKey, VerifyKey, err = userlib.DSKeyGen()
-	err = userlib.KeystoreSet(username+"verify", VerifyKey)
+	//generate and store RSA Sign, Verify keys	
+	userdata.SignKey, VerifyKey, _ = userlib.DSKeyGen()
+	_ = userlib.KeystoreSet(username+"ver", VerifyKey)
 
-	userdata.Sign, _ = userlib.DSSign(userdata.SignKey, userdata.Userkey) 
-	userinfo, err = json.Marshal(userdata)
-	userlib.DatastoreSet(userID, userinfo)
+	//generate a (deterministic) keys to encrypt and MAC User
+	usersymkey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("enc"))
+	usermackey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("mac"))
+
+	usersymkey = usersymkey[:16]
+	usermackey = usermackey[:16]
+
+	//marshall user 
+	marshalledUser, _ := json.Marshal(userdata)
+
+	//encrypt and mac user struct
+	encryptedUser := userlib.SymEnc(usersymkey, userlib.RandomBytes(16), marshalledUser)
+	userMAC, _ := userlib.HMACEval(usermackey, encryptedUser)
+	encryptedMACedUser := append(encryptedUser, userMAC...)
+
+	//set in datastore
+	userlib.DatastoreSet(userdata.UserUUID, encryptedMACedUser)
 
 	return userdataptr, nil
 }
@@ -184,43 +204,45 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	userdataptr = &userdata
 
 	//compute user UUID and see if user is in datastore
-	temp := userlib.Hash([]byte(username))
-	userID, err := uuid.FromBytes(temp[:16])
-	userStruct, ok := userlib.DatastoreGet(userID)
+	hashedUsername := userlib.Hash([]byte(username))
+	userID, err := uuid.FromBytes(hashedUsername[:16])
+	encryptedMACedUser, ok := userlib.DatastoreGet(userID)
+
+	//use random data to get len of mac
+	randomMAC, _ := userlib.HMACEval(userlib.RandomBytes(16), []byte("whyisthisprojectsohard"))
+
+	if (!ok) || (len(encryptedMACedUser) <= len(randomMAC)) {
+		return nil, errors.New("User not found or corrupted!")
+	}
+
+	//generate salted password to generate keys via HKDF and to check pwd match
+	saltedPassword := userlib.Argon2Key([]byte(password), []byte(username), 16)
+
+	//generate a (deterministic) keys to decrypt and Verify User
+	usersymkey, _ := userlib.HashKDF(saltedPassword, []byte("enc"))
+	usersymkey = usersymkey[:16]
+	usermackey, _ := userlib.HashKDF(saltedPassword, []byte("mac"))
+	usermackey = usermackey[:16]
+
+	//seperate user struct from MAC
+	encryptedUser := encryptedMACedUser[:len(encryptedMACedUser)-64]
 	
-
-	//if user does not exist, error
-	if !ok {
-		err = errors.New("user does not exist")
-		return userdataptr, err
-	}
-
-	//unmarshal user struct and compute salted hashed password
-	json.Unmarshal(userStruct, &userdata)
-	userKeyPrime := userlib.Argon2Key([]byte(password), []byte(username), 32)
-
-	//if passwords do not match, error
-	if string(userKeyPrime) != string(userdata.Userkey) {
-		err = errors.New("passwords do not match")
-		return userdataptr, err
-	}
-
-	/*
-	//if verify key does not exist, error
-	verKey, ok := userlib.KeystoreGet(userdata.Username + "verify")
-	if !ok {
-		err = errors.New("verify key does not exist")
-		return userdataptr, err
-	}
-
+	userMAC := encryptedMACedUser[len(encryptedMACedUser)-64:]
 	
-	//if userkey tampered, error
-	keyErr := userlib.DSVerify(verKey, userdata.Userkey, userdata.Sign)
-	if keyErr != nil {
-		err = errors.New("userkey tampered with")
-		return userdataptr, err
+	//verify user
+	MACencryptedUser, _ := userlib.HMACEval(usermackey, encryptedUser)
+	if !userlib.HMACEqual(MACencryptedUser, userMAC) {
+		return nil, errors.New("User data corrupted!")
 	}
-	*/
+	
+	//decrypt user and unmarshal at userdataptr
+	decryptedUser := userlib.SymDec(usersymkey, encryptedUser)
+	json.Unmarshal(decryptedUser, &userdata)
+
+	//check password
+	if string(saltedPassword) != string(userdata.SaltedPassword) {
+		return nil, errors.New("Incorrect password!")
+	}
 
 	return userdataptr, nil
 }

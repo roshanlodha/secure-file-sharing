@@ -13,7 +13,7 @@ import (
 	"github.com/cs161-staff/userlib"
 	_ "encoding/json"
 	_ "encoding/hex"
-	"github.com/google/uuid"
+	_ "github.com/google/uuid"
 	_ "strings"
 	_ "errors"
 	_ "strconv"
@@ -144,17 +144,18 @@ func TestGetUser(t *testing.T) {
 		return
 	}
 
+	_, err3 := GetUser("Roshan", "mEdiCineIzMyPaSSIon")
+	if err3 != nil {
+		t.Error("Could not access user with correct password", err3)
+		return
+	}
+
 	_, err2 := GetUser("Roshan", "jk I hate medicine")
 	if err2 == nil {
 		t.Error("Accessed user with wrong password", err2)
 		return
 	}
 
-	_, err3 := GetUser("Roshan", "mEdiCineIzMyPaSSIon")
-	if err3 != nil {
-		t.Error("Could not access user with correct password", err3)
-		return
-	}
 
 	_, err4 := GetUser("Ganesh", "mEdiCineIzMyPaSSIon")
 	if err4 == nil {
@@ -776,7 +777,7 @@ func TestSameFileName(t *testing.T) {
 		return
 	}
 }
-
+/*
 
 func TestFileDeleted(t *testing.T) {
 	clear()
@@ -811,7 +812,7 @@ func TestFileDeleted(t *testing.T) {
 
 }
 
-/*
+
 
 func TestFileIntegrity(t *testing.T) {
 	clear()
