@@ -85,28 +85,25 @@ func bytesToUUID(data []byte) (ret uuid.UUID) {
 // The structure definition for a user record
 type User struct {
 	Username string
-	Created []CreatedFile
+	Files []uuid.UUID
 	UserUUID uuid.UUID
 	SaltedPassword []byte
 	DecKey userlib.PKEDecKey
 	SignKey userlib.DSSignKey
-
-	// You can add other fields here if you want...
-	// Note for JSON to marshal/unmarshal, the fields need to
-	// be public (start with a capital letter)
 }
 
 type File struct {
 	FileData []byte
-	Creator string
 	NextEdit uuid.UUID
 	FinalEdit uuid.UUID
 }
 
-type CreatedFile struct {
-	FileUUID uuid.UUID
-	FileKey []byte
-	FileName string
+type FileToken struct {
+	NextHop uuid.UUID
+	LastHop bool
+	FileKey []byte //Pk_reciever
+	FileName string //HASH/Enc filename
+	Created bool
 }
 
 // This creates a user.  It will only be called once for a user
