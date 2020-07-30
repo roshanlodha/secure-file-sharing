@@ -234,7 +234,7 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 // The plaintext of the filename + the plaintext and length of the filename 
 // should NOT be revealed to the datastore!
 func (userdata *User) StoreFile(filename string, data []byte) {
-	var ft FileToken
+	var myToken FileToken
 	var nft FileToken
 	var exists bool
 	var file File
@@ -245,12 +245,11 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	//check if file already exists with user
 	for _, f := range userdata.Files {
 		fileToken, ok := userlib.DatastoreGet(f)
-		json.Unmarshal(fileToken, &ft)
-		//ft = userlib.PKEDec(userdata.DecKey, ft)
+		json.Unmarshal(fileToken, &myToken)
 		if !ok {
 			return
 		}
-		if (ft.HashedName == hashedFilename) && (ft.Created) {
+		if (myToken.HashedName == hashedFilename) && (myToken.Created) {
 			exists = true
 		}
 	}
@@ -315,6 +314,7 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 // existing file, but only whatever additional information and
 // metadata you need.
 func (userdata *User) AppendFile(filename string, data []byte) (err error) {
+	/*
 	var found bool
 	var key []byte
 	var myToken FileToken
@@ -363,13 +363,15 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 	if !found {
 		return errors.New(strings.ToTitle("File does not exist with this user!"))
 	}
+	*/
+	return
 }
 
 // This loads a file from the Datastore.
 //
 // It should give an error if the file is corrupted in any way.
 func (userdata *User) LoadFile(filename string) (data []byte, err error) {
-	var ft FileToken
+	var myToken FileToken
 	var file File
 	var exists bool
 	var accessUUID uuid.UUID
@@ -380,44 +382,45 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 	//check if file already exists
 	for _, f := range userdata.Files {
 		fileToken, ok := userlib.DatastoreGet(f)
-		json.Unmarshal(fileToken, &ft)
-		//ft = userlib.PKEDec(userdata.DecKey, ft)
+		json.Unmarshal(fileToken, &myToken)
 		if !ok {
 			return
 		}
-		if (ft.HashedName == hashedFilename) {
+		if (myToken.HashedName == hashedFilename) {
 			exists = true
-			accessUUID = ft.NextHop
+			accessUUID = myToken.NextHop
 
 			break
 		}
 	}
 
 	if exists {
-
-		key, _ := userlib.PKEDec(userdata.DecKey, token.FileKey)
+		key, _ := userlib.PKEDec(userdata.DecKey, myToken.FileKey)
+		if len(key) == 0 {
+			return nil, errors.New(strings.ToTitle("Unknown key error!"))
+		}
 
 		//get to the final hop and set accessUUID
-		for !ft.FinalHop {
+		for !myToken.LastHop {
 
-			marshalledFileToken, ok = userlib.DatastoreGet(ft.NextHop)
+			marshalledFileToken, ok := userlib.DatastoreGet(myToken.NextHop)
 			if !ok {
 				return nil, errors.New(strings.ToTitle("Parent's file access revoked!"))	
 			}
-			json.Unmarshal(marshalledFileToken, &ft)
+			json.Unmarshal(marshalledFileToken, &myToken)
 		}
 
-		accessUUID = ft.NextHop
+		accessUUID = myToken.NextHop
 
 		encryptedMACedFile, _:= userlib.DatastoreGet(accessUUID)
 
 		encyptedFile := encryptedMACedFile[:len(encryptedMACedFile)-64]
-		marshalledFile := userlib.PKEDec(key, encyptedFile)
-		json.Unmarshal(marshalledFile, &File)
+		marshalledFile := userlib.SymDec(key, encyptedFile)
+		json.Unmarshal(marshalledFile, &file)
 
 		encryptedMACedData := file.FileData
 		encryptedData := encryptedMACedData[:len(encryptedMACedData)-64]
-		data = userlib.PKEDec(key, encryptedData)
+		data = userlib.SymDec(key, encryptedData)
 
 
 	} else {
