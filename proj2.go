@@ -283,106 +283,127 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 
 	var myToken FileToken
 	var file File
+	var exists bool
+
 	for _, fileUUID := range userdata.Files {
 		marshalledToken, _ := userlib.DatastoreGet(fileUUID)
 		json.Unmarshal(marshalledToken, &myToken)
 		if userlib.Hash([]byte(filename)) == myToken.HashedName {
+			exists = true
 			//check if file creator
 			if !myToken.Created {
 				return
+			} else {
+				//key = Enc(PKreceiver, Dec(SkMe, key))
+				key, _ := userlib.PKEDec(userdata.DecKey, myToken.FileKey)
+				mackey, _ := userlib.HashKDF(key, []byte("mac"))
+				mackey = mackey[:16]
+
+				//encrypt and mac filedata
+				encryptedData := userlib.SymEnc(key, userlib.RandomBytes(16), data)
+				dataMAC, _ := userlib.HMACEval(mackey, encryptedData)
+				encryptedMACedData := append(encryptedData, dataMAC...)
+
+				//build file
+				file.FileData = encryptedMACedData
+				file.NextEdit, _ = uuid.FromBytes([]byte("NullUUID"))
+				file.FinalEdit, _ = uuid.FromBytes([]byte("NullUUID"))
+
+				//encrypt and mac file
+				marshaledFile, _ := json.Marshal(file)
+				encryptedFile := userlib.SymEnc(key, userlib.RandomBytes(16), marshaledFile)
+				fileMAC, _ := userlib.HMACEval(mackey, encryptedFile)
+				encryptedMACedFile := append(encryptedFile, fileMAC...)
+
+				//overwrite file in datastore
+				userlib.DatastoreSet(myToken.NextHop, encryptedMACedFile)
+
+				//update User struct in datastore
+				//generate a (deterministic) keys to encrypt and MAC User
+				usersymkey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("enc"))
+				usersymkey = usersymkey[:16]
+				usermackey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("mac"))
+				usermackey = usermackey[:16]
+
+				//marshall user 
+				marshalledUser, _ := json.Marshal(userdata)
+
+				//encrypt and mac user struct
+				encyptedUser := userlib.SymEnc(usersymkey, userlib.RandomBytes(16), marshalledUser)
+				userMAC, _ := userlib.HMACEval(usermackey, usermackey)
+				encryptedMACedUser := append(encyptedUser, userMAC...)
+
+				//set in datastore
+				userlib.DatastoreSet(userdata.UserUUID, encryptedMACedUser)
+				
+				return
 			}
-
-			//key = Enc(PKreceiver, Dec(SkMe, key))
-			key, _ := userlib.PKEDec(userdata.DecKey, myToken.FileKey)
-			mackey, _ := userlib.HashKDF(key, []byte("mac"))
-			mackey = mackey[:16]
-
-			//encrypt and mac filedata
-			encryptedData := userlib.SymEnc(key, userlib.RandomBytes(16), data)
-			dataMAC, _ := userlib.HMACEval(mackey, encryptedData)
-			encryptedMACedData := append(encryptedData, dataMAC...)
-
-			//build file
-			file.FileData = encryptedMACedData
-			file.NextEdit, _ = uuid.FromBytes([]byte("NullUUID"))
-			file.FinalEdit, _ = uuid.FromBytes([]byte("NullUUID"))
-
-			//encrypt and mac file
-			marshaledFile, _ := json.Marshal(file)
-			encryptedFile := userlib.SymEnc(key, userlib.RandomBytes(16), marshaledFile)
-			fileMAC, _ := userlib.HMACEval(mackey, encryptedFile)
-			encryptedMACedFile := append(encryptedFile, fileMAC...)
-
-			//overwrite file in datastore
-			userlib.DatastoreSet(myToken.NextHop, encryptedMACedFile)
-			return
 		}
 	}
-	//if not created
+	if !exists {
+		//if file not found
+		//use HKDF to generate symmetric encryption and mac keys
+		key := userlib.RandomBytes(16)
+		mackey, _ := userlib.HashKDF(key, []byte("mac"))
+		mackey = mackey[:16]
 
-	print()
+		//encrypt and mac filedata
+		encryptedData := userlib.SymEnc(key, userlib.RandomBytes(16), data)
+		dataMAC, _ := userlib.HMACEval(mackey, encryptedData)
+		encryptedMACedData := append(encryptedData, dataMAC...)
 
-	//use HKDF to generate symmetric encryption and mac keys
-	key := userlib.RandomBytes(16)
-	mackey, _ := userlib.HashKDF(key, []byte("mac"))
-	mackey = mackey[:16]
+		//build file
+		file.FileData = encryptedMACedData
+		file.NextEdit, _ = uuid.FromBytes([]byte("NullUUID"))
+		file.FinalEdit, _ = uuid.FromBytes([]byte("NullUUID"))
 
-	//encrypt and mac filedata
-	encryptedData := userlib.SymEnc(key, userlib.RandomBytes(16), data)
-	dataMAC, _ := userlib.HMACEval(mackey, encryptedData)
-	encryptedMACedData := append(encryptedData, dataMAC...)
+		//encrypt and mac file
+		marshaledFile, _ := json.Marshal(file)
+		encryptedFile := userlib.SymEnc(key, userlib.RandomBytes(16), marshaledFile)
+		fileMAC, _ := userlib.HMACEval(mackey, encryptedFile)
+		encryptedMACedFile := append(encryptedFile, fileMAC...)
 
-	//build file
-	file.FileData = encryptedMACedData
-	file.NextEdit, _ = uuid.FromBytes([]byte("NullUUID"))
-	file.FinalEdit, _ = uuid.FromBytes([]byte("NullUUID"))
+		//set in datastore
+		fileUUID := uuid.New()
+		userlib.DatastoreSet(fileUUID, encryptedMACedFile)
 
-	//encrypt and mac file
-	marshaledFile, _ := json.Marshal(file)
-	encryptedFile := userlib.SymEnc(key, userlib.RandomBytes(16), marshaledFile)
-	fileMAC, _ := userlib.HMACEval(mackey, encryptedFile)
-	encryptedMACedFile := append(encryptedFile, fileMAC...)
+		//create an access token for myself and store
+		myToken.NextHop = fileUUID
+		myToken.LastHop = true
+		myToken.HashedName = userlib.Hash([]byte(filename))
+		myToken.Created = true
 
-	//set in datastore
-	fileUUID := uuid.New()
-	userlib.DatastoreSet(fileUUID, encryptedMACedFile)
+		//get my encryption key
+		myEncKey, _ := userlib.KeystoreGet(userdata.Username+"enc")
+		myToken.FileKey, _ = userlib.PKEEnc(myEncKey, key)
 
-	//create an access token for myself and store
-	myToken.NextHop = fileUUID
-	myToken.LastHop = true
-	myToken.HashedName = userlib.Hash([]byte(filename))
-	myToken.Created = true
+		//add token to Datastore
+		tokenUUID := uuid.New()
 
-	//get my encryption key
-	myEncKey, _ := userlib.KeystoreGet(userdata.Username+"enc")
-	myToken.FileKey, _ = userlib.PKEEnc(myEncKey, key)
+		marshalledToken, _ := json.Marshal(myToken)
+		userlib.DatastoreSet(tokenUUID, marshalledToken)
 
-	//add token to Datastore
-	tokenUUID := uuid.New()
+		//add token to files table
+		userdata.Files = append(userdata.Files, tokenUUID)
 
-	marshalledToken, _ := json.Marshal(myToken)
-	userlib.DatastoreSet(tokenUUID, marshalledToken)
+		//update User struct in datastore
+		//generate a (deterministic) keys to encrypt and MAC User
+		usersymkey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("enc"))
+		usersymkey = usersymkey[:16]
+		usermackey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("mac"))
+		usermackey = usermackey[:16]
 
-	//add token to files table
-	userdata.Files = append(userdata.Files, tokenUUID)
+		//marshall user 
+		marshalledUser, _ := json.Marshal(userdata)
 
-	//update User struct in datastore
-	//generate a (deterministic) keys to encrypt and MAC User
-	usersymkey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("enc"))
-	usersymkey = usersymkey[:16]
-	usermackey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("mac"))
-	usermackey = usermackey[:16]
+		//encrypt and mac user struct
+		encyptedUser := userlib.SymEnc(usersymkey, userlib.RandomBytes(16), marshalledUser)
+		userMAC, _ := userlib.HMACEval(usermackey, usermackey)
+		encryptedMACedUser := append(encyptedUser, userMAC...)
 
-	//marshall user 
-	marshalledUser, _ := json.Marshal(userdata)
-
-	//encrypt and mac user struct
-	encyptedUser := userlib.SymEnc(usersymkey, userlib.RandomBytes(16), marshalledUser)
-	userMAC, _ := userlib.HMACEval(usermackey, usermackey)
-	encryptedMACedUser := append(encyptedUser, userMAC...)
-
-	//set in datastore
-	userlib.DatastoreSet(userdata.UserUUID, encryptedMACedUser)
+		//set in datastore
+		userlib.DatastoreSet(userdata.UserUUID, encryptedMACedUser)
+	}
 
 	return
 }
