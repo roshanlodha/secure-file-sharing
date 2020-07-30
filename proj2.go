@@ -503,9 +503,24 @@ func (userdata *User) ReceiveFile(filename string, sender string,
 	magic_string string) error {
 	var myToken FileToken
 
+	//generate file's hashedFilename
+	hashedFilename := userlib.Hash([]byte(filename))
+
 	//extract accessToken and signature
 	accessBytes := []byte(magic_string)[:16]
 	accessUUID, _ := uuid.FromBytes(accessBytes)
+
+	//check if file already shared with user
+	for _, f := range userdata.Files {
+		fileToken, ok := userlib.DatastoreGet(f)
+		json.Unmarshal(fileToken, &myToken)
+		if !ok {
+			return errors.New(strings.ToTitle("FileToken not found!"))
+		}
+		if (myToken.HashedName == hashedFilename) {
+			return errors.New(strings.ToTitle("File already shared!"))
+		}
+	}
 
 	//TODO: validate signature
 	signature := []byte(magic_string)[16:]
