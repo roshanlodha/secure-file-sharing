@@ -86,6 +86,7 @@ func bytesToUUID(data []byte) (ret uuid.UUID) {
 type User struct {
 	Username string
 	Files []uuid.UUID
+	Shared map[string]uuid.UUID //filename||recipient --> accessUUID
 	UserUUID uuid.UUID
 	SaltedPassword []byte
 	DecKey userlib.PKEDecKey
@@ -100,9 +101,9 @@ type File struct {
 
 type FileToken struct {
 	NextHop uuid.UUID
-	LastHop bool
-	FileKey []byte //Pk_reciever
-	FileName string //HASH/Enc filename
+	LastHop bool //
+	FileKey []byte //Enc(Pk, SymKey)
+	HashedName [64]byte //HASH filename
 	Created bool
 }
 
@@ -142,6 +143,9 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	//store username and salted password (username is the salt)
 	userdata.Username = username
 	userdata.SaltedPassword = userlib.Argon2Key([]byte(password), []byte(username), 16)
+
+	//initialize empty map for sharing
+	userdata.Shared = make(map[string]uuid.UUID)
 
 	//generate and store RSA Enc, Dec keys	
 	EncKey, userdata.DecKey, _ = userlib.PKEKeyGen()
@@ -230,38 +234,77 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 // The plaintext of the filename + the plaintext and length of the filename 
 // should NOT be revealed to the datastore!
 func (userdata *User) StoreFile(filename string, data []byte) {
-/*
-	var cf CreatedFile
+	var ft FileToken
+	var nft FileToken
 	var exists bool
+	var file File
+
+	//generate file's hashedFilename
+	hashedFilename := userlib.Hash([]byte(filename))
 
 	//check if file already exists with user
-	for _, createdFile := range userdata.Created {
-		if createdFile.FileName == filename {
+	for _, f := range userdata.Files {
+		fileToken, ok := userlib.DatastoreGet(f)
+		json.Unmarshal(fileToken, &ft)
+		//ft = userlib.PKEDec(userdata.DecKey, ft)
+		if !ok {
+			return
+		}
+		if (ft.HashedName == hashedFilename) && (ft.Created) {
 			exists = true
-			cf = createdFile
 		}
 	}
 
-	if exists {
+	//use HKDF to generate symmetric encryption and mac keys
+	k := userlib.RandomBytes(16)
+	k1, _ := userlib.HashKDF(k, []byte("fenc"))
+	k2, _ := userlib.HashKDF(k, []byte("fmac"))
 
-		//use HKDF to generate symmetric encryption and mac keys
-		k := []byte(cf.FileUUID.String())[:16]
-		k1, _ := userlib.HashKDF(k, []byte("fenc"))
-		k2, _ := userlib.HashKDF(k, []byte("fmac"))
+	//shorten keys to 16 bytes so they can be used
+	fSymEncrypt := k1[:16]
+	fMac := k2[:16]
 
-		//shorten keys to 16 bytes so they can be used
-		fSymEncrypt = k1[:16]
-		fMac = k2[:16]
+	//encrypt and mac filedata
+	encryptedData := userlib.SymEnc(fSymEncrypt, userlib.RandomBytes(16), data)
+	dataMAC, _ := userlib.HMACEval(fMac, encryptedData)
+	encryptedMACedData := append(encryptedData, dataMAC...)
 
-		f, ok := userlib.DatastoreGet(cf.FileUUID)
+	//build file
+	file.FileData = encryptedMACedData
+	file.NextEdit, _ = uuid.FromBytes([]byte("NullUUID"))
+	file.FinalEdit, _ = uuid.FromBytes([]byte("NullUUID"))
+
+	fileUUID, _ := uuid.FromBytes(k)
+
+	//encrypt and mac file
+	marshaledFile, _ := json.Marshal(file)
+	encryptedFile := userlib.SymEnc(fSymEncrypt, userlib.RandomBytes(16), marshaledFile)
+	fileMAC, _ := userlib.HMACEval(fMac, encryptedFile)
+	encryptedMACedFile := append(encryptedFile, fileMAC...)
+
+	//store encryptedMACedFile in datastore
+	userlib.DatastoreSet(fileUUID, encryptedMACedFile)
+
+	if !exists {
+		nft.NextHop = fileUUID
+		nft.LastHop = true
+		recipientPubKey, _ := userlib.KeystoreGet(userdata.Username+"enc")
+		nft.FileKey, _ = userlib.PKEEnc(recipientPubKey, fSymEncrypt)
+		nft.HashedName = hashedFilename
+		nft.Created = true
+
+		marshaledNFT, _ := json.Marshal(nft)
+		//encryptedNFT, _ := userlib.PKEEnc(recipientPubKey, marshaledNFT)
+
+		accessBytes := userlib.RandomBytes(16)
+		accessUUID, _ := uuid.FromBytes(accessBytes)
 		
+		//store encryptedFileToken in datastore
+		userlib.DatastoreSet(accessUUID, marshaledNFT)
 
+		userdata.Files = append(userdata.Files, accessUUID)
+	} 
 
-	} else {
-
-	}
-
-	*/
 
 	return
 }
@@ -272,25 +315,116 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 // existing file, but only whatever additional information and
 // metadata you need.
 func (userdata *User) AppendFile(filename string, data []byte) (err error) {
-	return
+	var found bool
+	var key []byte
+	var myToken FileToken
+
+	//UUID for the new edit
+	editID, _ := uuid.FromBytes(userlib.RandomBytes(16))
+
+	//find file and extract key
+	for _, fileUUID := range userdata.Files {
+		marshalledToken, _ := userlib.DatastoreGet(fileUUID)
+		json.Unmarshal(marshalledToken, &myToken)
+		if myToken.HashedName == userlib.Hash([]byte(filename)) {
+			//get key and generate FileStruct decryption key
+			key, _ = userlib.PKEDec(userdata.DecKey, token.FileKey)
+
+			//get to the final hop and set accessUUID
+			for !myToken.FinalHop {
+				marshalledFileToken, ok = userlib.DatastoreGet(myToken.NextHop)
+				if !ok {
+					return nil, errors.New(strings.ToTitle("Parent's file access revoked!"))	
+				}
+				json.Unmarshal(marshalledFileToken, &myToken)
+			}
+			//
+			accessUUID := myToken.NextHop
+			encryptedMACedFile := userlib.DatastoreGet(myToken.NextHop)
+
+			//
+			encryptedFile := encryptedMACedFile[:len(encryptedMACedFile)-64]
+
+			//decrypt and unmarshalle
+			var file File
+			marshalledFile, _ := userlib.SymDec(key, encryptedFile)
+			json.Unmarshal(marshalledFile, &file)
+			
+			//check data
+			encryptedMACedData := file.FileData
+			encryptedData := encryptedMACedData[:len(encryptedMACedData)-64]
+
+
+			found = true
+		}
+	}
+
+	//check if file exists
+	if !found {
+		return errors.New(strings.ToTitle("File does not exist with this user!"))
+	}
 }
 
 // This loads a file from the Datastore.
 //
 // It should give an error if the file is corrupted in any way.
 func (userdata *User) LoadFile(filename string) (data []byte, err error) {
+	var ft FileToken
+	var file File
+	var exists bool
+	var accessUUID uuid.UUID
+	
+	//generate file's hashedFilename
+	hashedFilename := userlib.Hash([]byte(filename))
 
-	//TODO: This is a toy implementation.
-	UUID, _ := uuid.FromBytes([]byte(filename + userdata.Username)[:16])
-	packaged_data, ok := userlib.DatastoreGet(UUID)
-	if !ok {
+	//check if file already exists
+	for _, f := range userdata.Files {
+		fileToken, ok := userlib.DatastoreGet(f)
+		json.Unmarshal(fileToken, &ft)
+		//ft = userlib.PKEDec(userdata.DecKey, ft)
+		if !ok {
+			return
+		}
+		if (ft.HashedName == hashedFilename) {
+			exists = true
+			accessUUID = ft.NextHop
+
+			break
+		}
+	}
+
+	if exists {
+
+		key, _ := userlib.PKEDec(userdata.DecKey, token.FileKey)
+
+		//get to the final hop and set accessUUID
+		for !ft.FinalHop {
+
+			marshalledFileToken, ok = userlib.DatastoreGet(ft.NextHop)
+			if !ok {
+				return nil, errors.New(strings.ToTitle("Parent's file access revoked!"))	
+			}
+			json.Unmarshal(marshalledFileToken, &ft)
+		}
+
+		accessUUID = ft.NextHop
+
+		encryptedMACedFile, _:= userlib.DatastoreGet(accessUUID)
+
+		encyptedFile := encryptedMACedFile[:len(encryptedMACedFile)-64]
+		marshalledFile := userlib.PKEDec(key, encyptedFile)
+		json.Unmarshal(marshalledFile, &File)
+
+		encryptedMACedData := file.FileData
+		encryptedData := encryptedMACedData[:len(encryptedMACedData)-64]
+		data = userlib.PKEDec(key, encryptedData)
+
+
+	} else {
 		return nil, errors.New(strings.ToTitle("File not found!"))
 	}
-	json.Unmarshal(packaged_data, &data)
-	return data, nil
-	//End of toy implementation
 
-	return
+	return data, nil
 }
 
 // This creates a sharing record, which is a key pointing to something
@@ -305,8 +439,57 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 // should be able to know the sender.
 func (userdata *User) ShareFile(filename string, recipient string) (
 	magic_string string, err error) {
+	//relavent info: 
+	var myToken FileToken
+	var sendingToken FileToken
+	var found bool
 
-	return
+	//search through all my files to find my access token
+	for _, fileUUID := range userdata.Files {
+		marshalledToken, _ := userlib.DatastoreGet(fileUUID)
+		json.Unmarshal(marshalledToken, &myToken)
+		if userlib.Hash([]byte(filename)) == myToken.HashedName {
+			found = true
+
+			//set nextHop to my fileUUID, lastHop is false
+			sendingToken.NextHop = fileUUID
+			sendingToken.LastHop = false
+
+			//reciever is NOT creator of file
+			sendingToken.Created = false
+
+			//key = Enc(PKreceiver, Dec(SkMe, key))
+			key, _ := userlib.PKEDec(userdata.DecKey, myToken.FileKey)
+			receiverKey, ok := userlib.KeystoreGet(recipient + "enc")
+			if !ok {
+				return "", errors.New(strings.ToTitle("Recipient not found!"))
+			}
+			sendingToken.FileKey, _ = userlib.PKEEnc(receiverKey, key)
+
+			break
+		}
+	}
+
+	if !found {
+		return "", errors.New(strings.ToTitle("File not found!"))
+	}
+
+	//create an accessUUID from Bytes to store sendingFile 
+	accessBytes := userlib.RandomBytes(16)
+	accessUUID, _ := uuid.FromBytes(accessBytes)
+
+	//sign accesskey
+	signature, _ := userlib.DSSign(userdata.SignKey, accessBytes)
+	magic_string = string(append(accessBytes, signature...))
+
+	//marshal and store token in datastore
+	marshalledToken, _ := json.Marshal(sendingToken)
+	userlib.DatastoreSet(accessUUID, marshalledToken)
+
+	//add the shared instance to Shared (for later revocation)
+	userdata.Shared[filename+recipient] = accessUUID
+
+	return magic_string, err
 }
 
 // Note recipient's filename can be different from the sender's filename.
@@ -315,10 +498,54 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 // it is authentically from the sender.
 func (userdata *User) ReceiveFile(filename string, sender string,
 	magic_string string) error {
+	var myToken FileToken
+
+	//extract accessToken and signature
+	accessBytes := []byte(magic_string)[:16]
+	accessUUID, _ := uuid.FromBytes(accessBytes)
+
+	//TODO: validate signature
+	signature := []byte(magic_string)[16:]
+	verKey, ok := userlib.KeystoreGet(sender+"ver")
+	if !ok {
+		return errors.New(strings.ToTitle("Sender not found!"))
+	} else if userlib.DSVerify(verKey, accessBytes, signature) != nil {
+
+	}
+
+	//unmarshal token
+	marshalledToken, ok := userlib.DatastoreGet(accessUUID)
+	if !ok {
+		return errors.New(strings.ToTitle("Access token corrupted!"))
+	}
+	json.Unmarshal(marshalledToken, &myToken)
+
+	//update Files
+	userdata.Files = append(userdata.Files, accessUUID)
+
+	//update filename
+	myToken.HashedName = userlib.Hash([]byte(filename))
+
+	//reset in DataStore
+	marshalledToken, _ = json.Marshal(myToken)
+	userlib.DatastoreSet(accessUUID, marshalledToken)
+
 	return nil
 }
 
 // Removes target user's access.
 func (userdata *User) RevokeFile(filename string, target_username string) (err error) {
+	//get UUID to remove
+	accessUUID, ok := userdata.Shared[filename+target_username]
+	if !ok {
+		return errors.New(strings.ToTitle("Invalid filename and target combo!"))
+	}
+
+	//remove from shared table
+	delete(userdata.Shared, filename+target_username)
+	
+	//removes from datastore
+	userlib.DatastoreDelete(accessUUID)
+
 	return
 }
