@@ -107,6 +107,50 @@ type FileToken struct {
 	Created bool
 }
 
+// Helper function to handle multiple user instances.
+func RefreshUser(username string, saltedPassword []byte) (userdataptr *User, err error) {
+	var userdata User
+
+	//generate user's unique ID via Hash(username)
+	hashedUsername := userlib.Hash([]byte(username))
+	if len(hashedUsername) < 16 { //checks if username is empty
+		return nil, errors.New("Username must not be empty!")
+	}
+	//use random data to get len of mac
+	randomMAC, _ := userlib.HMACEval(userlib.RandomBytes(16), []byte("whyisthisprojectsohard"))
+
+	//retrieve user struct
+	temp, _ := uuid.FromBytes(hashedUsername[:16])
+	encryptedMACedUser, ok := userlib.DatastoreGet(temp)
+	if (!ok) || (len(encryptedMACedUser) <= len(randomMAC)) {
+		return nil, errors.New("User not found or corrupted!")
+	}
+
+	//generate a (deterministic) keys to decrypt and Verify User
+	usersymkey, _ := userlib.HashKDF(saltedPassword, []byte("enc"))
+	usersymkey = usersymkey[:16]
+	usermackey, _ := userlib.HashKDF(saltedPassword, []byte("mac"))
+	usermackey = usermackey[:16]
+
+	//seperate user struct from MAC
+	encyptedUser := encryptedMACedUser[:len(encryptedMACedUser)-64]
+	/*
+	userMAC := encryptedMACedUser[len(encryptedMACedUser)-64:]
+
+	//verify user
+	MACencryptedUser, _ := userlib.HMACEval(usermackey, encyptedUser)
+	if !userlib.HMACEqual(MACencryptedUser, userMAC) {
+		return nil, errors.New("User data corrupted!")
+	}
+
+	//decrypt user and unmarshal at userdataptr
+	*/
+	decryptedUser := userlib.SymDec(usersymkey, encyptedUser)
+	json.Unmarshal(decryptedUser, &userdata)
+
+	return &userdata, nil
+}
+
 // This creates a user.  It will only be called once for a user
 // (unless the keystore and datastore are cleared during testing purposes)
 
@@ -180,7 +224,6 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 // data was corrupted, or if the user can't be found.
 func GetUser(username string, password string) (userdataptr *User, err error) {
 	var userdata User
-	userdataptr = &userdata
 
 	//generate user's unique ID via Hash(username)
 	hashedUsername := userlib.Hash([]byte(username))
@@ -219,14 +262,14 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	//decrypt user and unmarshal at userdataptr
 	*/
 	decryptedUser := userlib.SymDec(usersymkey, encyptedUser)
-	json.Unmarshal(decryptedUser, userdataptr)
+	json.Unmarshal(decryptedUser, &userdata)
 
 	//check password
 	if string(saltedPassword) != string(userdata.SaltedPassword) {
 		return nil, errors.New("Incorrect password!")
 	}
 
-	return userdataptr, nil
+	return &userdata, nil
 }
 
 // This stores a file in the datastore.
@@ -234,7 +277,10 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 // The plaintext of the filename + the plaintext and length of the filename 
 // should NOT be revealed to the datastore!
 func (userdata *User) StoreFile(filename string, data []byte) {
-	/*
+	//refresh user
+	userdataptr, _ := RefreshUser(userdata.Username, userdata.SaltedPassword)
+	*userdata = *userdataptr
+
 	var myToken FileToken
 	var file File
 	for _, fileUUID := range userdata.Files {
@@ -274,6 +320,8 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	}
 	//if not created
 
+	print()
+
 	//use HKDF to generate symmetric encryption and mac keys
 	key := userlib.RandomBytes(16)
 	mackey, _ := userlib.HashKDF(key, []byte("mac"))
@@ -311,92 +359,31 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 
 	//add token to Datastore
 	tokenUUID := uuid.New()
-	userlib.DatastoreSet(tokenUUID, encryptedMACedFile)
+
+	marshalledToken, _ := json.Marshal(myToken)
+	userlib.DatastoreSet(tokenUUID, marshalledToken)
 
 	//add token to files table
 	userdata.Files = append(userdata.Files, tokenUUID)
-	*/
-	var myToken FileToken
-	var nft FileToken
-	var exists bool
-	var file File
-	//var overrideK []byte
-	var fileUUID uuid.UUID
 
-	//generate file's hashedFilename
-	hashedFilename := userlib.Hash([]byte(filename))
+	//update User struct in datastore
+	//generate a (deterministic) keys to encrypt and MAC User
+	usersymkey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("enc"))
+	usersymkey = usersymkey[:16]
+	usermackey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("mac"))
+	usermackey = usermackey[:16]
 
-	//check if file already exists with user
-	for _, f := range userdata.Files {
-		fileToken, ok := userlib.DatastoreGet(f)
-		json.Unmarshal(fileToken, &myToken)
-		if !ok {
-			return
-		}
-		if (myToken.HashedName == hashedFilename) && (myToken.Created) {
-			exists = true
-			//overrideK = myToken.FileKey
-		}
-	}
+	//marshall user 
+	marshalledUser, _ := json.Marshal(userdata)
 
-	//use HKDF to generate symmetric encryption and mac keys
-	key := userlib.RandomBytes(16)
-	mackey, _ := userlib.HashKDF(key, []byte("mac"))
-	mackey = mackey[:16]
+	//encrypt and mac user struct
+	encyptedUser := userlib.SymEnc(usersymkey, userlib.RandomBytes(16), marshalledUser)
+	userMAC, _ := userlib.HMACEval(usermackey, usermackey)
+	encryptedMACedUser := append(encyptedUser, userMAC...)
 
-	//encrypt and mac filedata
-	encryptedData := userlib.SymEnc(key, userlib.RandomBytes(16), data)
-	dataMAC, _ := userlib.HMACEval(mackey, encryptedData)
-	encryptedMACedData := append(encryptedData, dataMAC...)
+	//set in datastore
+	userlib.DatastoreSet(userdata.UserUUID, encryptedMACedUser)
 
-	//build file
-	file.FileData = encryptedMACedData
-	file.NextEdit, _ = uuid.FromBytes([]byte("NullUUID"))
-	file.FinalEdit, _ = uuid.FromBytes([]byte("NullUUID"))
-
-	//encrypt and mac file
-	marshaledFile, _ := json.Marshal(file)
-	encryptedFile := userlib.SymEnc(key, userlib.RandomBytes(16), marshaledFile)
-	fileMAC, _ := userlib.HMACEval(mackey, encryptedFile)
-	encryptedMACedFile := append(encryptedFile, fileMAC...)
-
-	fileUUID, _ = uuid.FromBytes(key)
-
-
-
-	if !exists {
-
-		//store encryptedMACedFile in datastore
-		userlib.DatastoreSet(fileUUID, encryptedMACedFile)
-
-		nft.NextHop = fileUUID
-		nft.LastHop = true
-		recipientPubKey, _ := userlib.KeystoreGet(userdata.Username+"enc")
-		nft.FileKey, _ = userlib.PKEEnc(recipientPubKey, key)
-		nft.HashedName = hashedFilename
-		nft.Created = true
-
-		marshaledNFT, _ := json.Marshal(nft)
-		//encryptedNFT, _ := userlib.PKEEnc(recipientPubKey, marshaledNFT)
-
-		accessBytes := userlib.RandomBytes(16)
-		accessUUID, _ := uuid.FromBytes(accessBytes)
-		
-		//store encryptedFileToken in datastore
-		userlib.DatastoreSet(accessUUID, marshaledNFT)
-
-		userdata.Files = append(userdata.Files, accessUUID)
-
-	} else {
-
-		//key, _ = userlib.PKEDec(userdata.DecKey, overrideK)
-
-		fileUUID, _ = uuid.FromBytes(key)
-		//store encryptedMACedFile in datastore
-		userlib.DatastoreSet(fileUUID, encryptedMACedFile)
-
-
-	}
 	return
 }
 
@@ -406,6 +393,13 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 // existing file, but only whatever additional information and
 // metadata you need.
 func (userdata *User) AppendFile(filename string, data []byte) (err error) {
+	//refresh user
+	userdataptr, refresherror := RefreshUser(userdata.Username, userdata.SaltedPassword)
+	if refresherror != nil {
+		return errors.New("RefreshingError!")
+	}
+	*userdata = *userdataptr
+
 	var found bool
 	var key []byte
 	var myToken FileToken
@@ -476,7 +470,7 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 	userlib.DatastoreSet(editUUID, encryptedMACedFile)
 
 	//if first edit 
-	if baseFile.NextEdit == nullUUID {
+	if baseFile.FinalEdit == nullUUID {
 		baseFile.NextEdit = editUUID
 		baseFile.FinalEdit = editUUID
 
@@ -491,6 +485,9 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 	} else { 
 		//else, also update previous final
 		encryptedMACedPreviousFinal, _ := userlib.DatastoreGet(baseFile.FinalEdit)
+		if len(encryptedMACedPreviousFinal) < 64 {
+			return errors.New(strings.ToTitle("File corrupted!"))
+		}
 		encryptedPreviousFinal := encryptedMACedPreviousFinal[:len(encryptedMACedPreviousFinal)-64]
 
 		//decrypt and unmarshal
@@ -527,6 +524,13 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 //
 // It should give an error if the file is corrupted in any way.
 func (userdata *User) LoadFile(filename string) (data []byte, err error) {
+	//refresh user
+	userdataptr, refresherror := RefreshUser(userdata.Username, userdata.SaltedPassword)
+	if refresherror != nil {
+		return nil, errors.New("RefreshingError!")
+	}
+	*userdata = *userdataptr
+
 	var found bool
 	var key []byte
 	var myToken FileToken
@@ -612,7 +616,14 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 // should be able to know the sender.
 func (userdata *User) ShareFile(filename string, recipient string) (
 	magic_string string, err error) {
-	//relavent info: 
+	//refresh user
+	userdataptr, refresherror := RefreshUser(userdata.Username, userdata.SaltedPassword)
+	if refresherror != nil {
+		return "", errors.New("RefreshingError!")
+	}
+	*userdata = *userdataptr
+
+	//relavent info
 	var myToken FileToken
 	var sendingToken FileToken
 	var found bool
@@ -662,6 +673,24 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 	//add the shared instance to Shared (for later revocation)
 	userdata.Shared[filename+recipient] = accessUUID
 
+	//update User struct in datastore
+	//generate a (deterministic) keys to encrypt and MAC User
+	usersymkey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("enc"))
+	usersymkey = usersymkey[:16]
+	usermackey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("mac"))
+	usermackey = usermackey[:16]
+
+	//marshall user 
+	marshalledUser, _ := json.Marshal(userdata)
+
+	//encrypt and mac user struct
+	encyptedUser := userlib.SymEnc(usersymkey, userlib.RandomBytes(16), marshalledUser)
+	userMAC, _ := userlib.HMACEval(usermackey, usermackey)
+	encryptedMACedUser := append(encyptedUser, userMAC...)
+
+	//set in datastore
+	userlib.DatastoreSet(userdata.UserUUID, encryptedMACedUser)
+
 	return magic_string, err
 }
 
@@ -677,6 +706,9 @@ func (userdata *User) ReceiveFile(filename string, sender string,
 	hashedFilename := userlib.Hash([]byte(filename))
 
 	//extract accessToken and signature
+	if len(magic_string) < 16 {
+		return errors.New(strings.ToTitle("Access token corrupted!"))
+	}
 	accessBytes := []byte(magic_string)[:16]
 	accessUUID, _ := uuid.FromBytes(accessBytes)
 
@@ -718,6 +750,24 @@ func (userdata *User) ReceiveFile(filename string, sender string,
 	marshalledToken, _ = json.Marshal(myToken)
 	userlib.DatastoreSet(accessUUID, marshalledToken)
 
+	//update User struct in datastore
+	//generate a (deterministic) keys to encrypt and MAC User
+	usersymkey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("enc"))
+	usersymkey = usersymkey[:16]
+	usermackey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("mac"))
+	usermackey = usermackey[:16]
+
+	//marshall user 
+	marshalledUser, _ := json.Marshal(userdata)
+
+	//encrypt and mac user struct
+	encyptedUser := userlib.SymEnc(usersymkey, userlib.RandomBytes(16), marshalledUser)
+	userMAC, _ := userlib.HMACEval(usermackey, usermackey)
+	encryptedMACedUser := append(encyptedUser, userMAC...)
+
+	//set in datastore
+	userlib.DatastoreSet(userdata.UserUUID, encryptedMACedUser)
+
 	return nil
 }
 
@@ -734,6 +784,24 @@ func (userdata *User) RevokeFile(filename string, target_username string) (err e
 	
 	//removes from datastore
 	userlib.DatastoreDelete(accessUUID)
+
+	//update User struct in datastore
+	//generate a (deterministic) keys to encrypt and MAC User
+	usersymkey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("enc"))
+	usersymkey = usersymkey[:16]
+	usermackey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("mac"))
+	usermackey = usermackey[:16]
+
+	//marshall user 
+	marshalledUser, _ := json.Marshal(userdata)
+
+	//encrypt and mac user struct
+	encyptedUser := userlib.SymEnc(usersymkey, userlib.RandomBytes(16), marshalledUser)
+	userMAC, _ := userlib.HMACEval(usermackey, usermackey)
+	encryptedMACedUser := append(encyptedUser, userMAC...)
+
+	//set in datastore
+	userlib.DatastoreSet(userdata.UserUUID, encryptedMACedUser)
 
 	return
 }
