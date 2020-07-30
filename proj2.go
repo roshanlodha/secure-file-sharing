@@ -126,8 +126,7 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 
 	//store username and salted password (username is the salt)
 	userdata.Username = username
-	userdata.SaltedPassword = userlib.Argon2Key([]byte(password), []byte(username), 32)
-	userdata.UniversalKey = 
+	userdata.SaltedPassword = userlib.Argon2Key([]byte(password), []byte(username), 16)
 
 	//generate and store RSA Enc, Dec keys	
 	EncKey, userdata.DecKey, _ = userlib.PKEKeyGen()
@@ -137,9 +136,20 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	userdata.SignKey, VerifyKey, _ = userlib.DSKeyGen()
 	_ = userlib.KeystoreSet(username+"ver", VerifyKey)
 
-	//marshall and store User struct
+	//generate a (deterministic) keys to encrypt and MAC User
+	usersymkey, _ = userlib.HashKDF(userdata.SaltedPassword, []byte("enc"))
+	usermackey, _ = userlib.HashKDF(userdata.SaltedPassword, []byte("mac"))
+
+	//marshall user 
 	marshalledUser, _ = json.Marshal(userdata)
-	userlib.DatastoreSet(userdata.UserUUID, marshalledUser)
+
+	//encrypt and mac user struct
+	encyptedUser := userlib.SymEnc(usersymkey, userlib.RandomBytes(16), marshalledUser)
+	userMAC, _ := userlib.HMACEval(usermackey, usermackey)
+	encryptedMACedUser := append(encyptedUser, userMAC...)
+
+	//set in datastore
+	userlib.DatastoreSet(userdata.UserUUID, encryptedMACedUser)
 
 	return &userdata, nil
 }
