@@ -272,16 +272,22 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 		}
 	}
 
+	mackey, _ := userlib.HashKDF(key, []byte("mac"))
+	mackey = mackey[:16]
+
 	//build and marshall File
 	file.FileData = userlib.SymEnc(key, userlib.RandomBytes(16), data)
 	file.NextEdit, _ = uuid.FromBytes([]byte("nullUUID"))
 	file.FinalEdit, _ = uuid.FromBytes([]byte("nullUUID"))
-	//file.ContentSign, _ = userlib.DSSign(userdata.SignKey, file.FileData) 
 
-	packaged_data, _ := json.Marshal(file)
+	//encrypt and mac file
+	marshaledFile, _ := json.Marshal(file)
+	encryptedFile := userlib.SymEnc(key, userlib.RandomBytes(16), marshaledFile)
+	fileMAC, _ := userlib.HMACEval(mackey, encryptedFile)
+	encryptedMACedFile := append(encryptedFile, fileMAC...)
 
 	//add file to datastore
-	userlib.DatastoreSet(fileUUID, packaged_data)
+	userlib.DatastoreSet(fileUUID, encryptedMACedFile)
 
 	//add file metadata to CreatedFile instance
 	if !overwrite {
@@ -289,9 +295,23 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 		userdata.Created = append(userdata.Created, metadata)
 	}
 
-	//update User struct in Datastore
-	marshallUserData, _ := json.Marshal(userdata)
-	userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
+	//update User struct in datastore
+	//generate a (deterministic) keys to encrypt and MAC User
+	usersymkey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("enc"))
+	usersymkey = usersymkey[:16]
+	usermackey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("mac"))
+	usermackey = usermackey[:16]
+
+	//marshall user 
+	marshalledUser, _ := json.Marshal(userdata)
+
+	//encrypt and mac user struct
+	encryptedUser := userlib.SymEnc(usersymkey, userlib.RandomBytes(16), marshalledUser)
+	userMAC, _ := userlib.HMACEval(usermackey, usermackey)
+	encryptedMACedUser := append(encryptedUser, userMAC...)
+
+	//set in datastore
+	userlib.DatastoreSet(userdata.UserUUID, encryptedMACedUser)
 
 	return
 }
@@ -334,14 +354,17 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 		return errors.New(strings.ToTitle("File does not exist with this user!"))
 	}
 
-
-	//encrypt edit and store in datastore
+	//build and marshall File
 	file.FileData = userlib.SymEnc(key, userlib.RandomBytes(16), data)
 	file.NextEdit, _ = uuid.FromBytes([]byte("nullUUID"))
 	file.FinalEdit, _ = uuid.FromBytes([]byte("nullUUID"))
 
-	packaged_file, _ := json.Marshal(file)
-	userlib.DatastoreSet(editID, packaged_file)
+	//encrypt and mac file
+	marshaledFile, _ := json.Marshal(file)
+
+	//add file to datastore
+	userlib.DatastoreSet(editID, marshaledFile)
+
 
 	//look for file in created table
 	for _, createdfile := range userdata.Created {
@@ -381,14 +404,21 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 		}
 	}
 
-	//should have fileUUID and key now
-	packaged_data, ok := userlib.DatastoreGet(fileUUID)
+	//unmarshall file and decrypt FileD
+	encryptedMACedFile, ok := userlib.DatastoreGet(fileUUID)
 	if !ok {
 		return errors.New(strings.ToTitle("File not found!"))
 	}
+	if len(key) == 0 {
+		return errors.New(strings.ToTitle("Unknown key error."))
+	}
 
-	//update pointers
-	json.Unmarshal(packaged_data, &OGfile)
+	encryptedFile := encryptedMACedFile[:len(encryptedMACedFile)-64]
+
+	//decrypt and unmarshal file
+	marshalledFile := userlib.SymDec(key, encryptedFile)
+	json.Unmarshal(marshalledFile, &OGfile)
+
 	nullUUID, _ := uuid.FromBytes([]byte("nullUUID"))
 	prevfinalID := OGfile.FinalEdit
 
@@ -396,22 +426,54 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 	if prevfinalID == nullUUID {
 		OGfile.NextEdit = editID
 		OGfile.FinalEdit = editID
-		//OGfile.ContentSign, _ = userlib.DSSign(userdata.SignKey, OGfile.FileData) 
-		packaged_data, _ = json.Marshal(OGfile)
-		userlib.DatastoreSet(fileUUID, packaged_data)
+
+		mackey, _ := userlib.HashKDF(key, []byte("mac"))
+		mackey = mackey[:16]
+
+		//encrypt and mac file
+		marshaledOGfile, _ := json.Marshal(OGfile)
+		encryptedOGfile := userlib.SymEnc(key, userlib.RandomBytes(16), marshaledOGfile)
+		ogfileMAC, _ := userlib.HMACEval(mackey, encryptedOGfile)
+		encryptedMACedOGFile := append(encryptedOGfile, ogfileMAC...)
+
+		//add file to datastore
+		userlib.DatastoreSet(fileUUID, encryptedMACedOGFile)
+
 	} else {
-		pf, ok := userlib.DatastoreGet(prevfinalID)
+
+
+		//unmarshall file and decrypt FileData
+		marshalledPrevFile, ok := userlib.DatastoreGet(prevfinalID)
 		if !ok {
-			return errors.New(strings.ToTitle("prevfinalID not found!"))
+			return errors.New(strings.ToTitle("File not found!"))
 		}
-		json.Unmarshal(pf, &prevFile)
+		if len(key) == 0 {
+			return errors.New(strings.ToTitle("Unknown key error."))
+		}
+
+		json.Unmarshal(marshalledPrevFile, &prevFile)
+
+
 		prevFile.NextEdit = editID
-		//prevFile.ContentSign, _ = userlib.DSSign(userdata.SignKey, prevFile.FileData) 
-		packaged_data, _ = json.Marshal(prevFile)
-		userlib.DatastoreSet(prevfinalID, packaged_data)
+
+		//encrypt and mac file
+		marshaledPrevfile, _ := json.Marshal(prevFile)
+		userlib.DatastoreSet(prevfinalID, marshaledPrevfile)
+
 		OGfile.FinalEdit = editID
-		packaged_data2, _ := json.Marshal(OGfile)
-		userlib.DatastoreSet(fileUUID, packaged_data2)
+
+		mackey, _ := userlib.HashKDF(key, []byte("mac"))
+		mackey = mackey[:16]
+
+		//encrypt and mac file
+		marshaledOGfile, _ := json.Marshal(OGfile)
+		encryptedOGfile := userlib.SymEnc(key, userlib.RandomBytes(16), marshaledOGfile)
+		ogfileMAC, _ := userlib.HMACEval(mackey, encryptedOGfile)
+		encryptedMACedOGFile := append(encryptedOGfile, ogfileMAC...)
+
+		//add file to datastore
+		userlib.DatastoreSet(fileUUID, encryptedMACedOGFile)
+
 	}
 
 	return err
@@ -469,8 +531,9 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 		}
 	}
 
-	//should have fileUUID and key now
-	packaged_data, ok := userlib.DatastoreGet(fileUUID)
+
+	//unmarshall file and decrypt FileData
+	encryptedMACedFile, ok := userlib.DatastoreGet(fileUUID)
 	if !ok {
 		return nil, errors.New(strings.ToTitle("File not found!"))
 	}
@@ -478,29 +541,30 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 		return nil, errors.New(strings.ToTitle("Unknown key error."))
 	}
 
-	//unmarshall file and decrypt FileData
-	json.Unmarshal(packaged_data, &file)
+	encryptedFile := encryptedMACedFile[:len(encryptedMACedFile)-64]
+	fileMAC := encryptedMACedFile[len(encryptedMACedFile)-64:]
+
+	//decrypt and unmarshal file
+	marshalledFile := userlib.SymDec(key, encryptedFile)
+	json.Unmarshal(marshalledFile, &file)
+
+
+	mackey, _ := userlib.HashKDF(key, []byte("mac"))
+	mackey = mackey[:16]
+	
+	//verify user
+	MACencryptedFile, _ := userlib.HMACEval(mackey, encryptedFile)
+	if !userlib.HMACEqual(MACencryptedFile, fileMAC) {
+		return nil, errors.New("File data corrupted!")
+	}
+
+
 	if(len(file.FileData)) == 0 {
 		return nil, errors.New(strings.ToTitle("Empty file!"))
 	}
 	data = append(data, userlib.SymDec(key, file.FileData)...)
 
-	/*
-	//if verify key does not exist, error
-	verKey, ok := userlib.KeystoreGet(userdata.Username + "verify")
-	if !ok {
-		err = errors.New("verify key does not exist")
-		return data, err
-	}
-
-	//if filedata tampered, error
-	dataErr := userlib.DSVerify(verKey, file.FileData, file.ContentSign)
-	if dataErr != nil {
-		err = errors.New("filedata tampered with")
-		return data, err
-	}
-	*/
-
+	
 	//load data from next edits
 	nullUUID, _ := uuid.FromBytes([]byte("nullUUID"))
 	for file.NextEdit != nullUUID {
