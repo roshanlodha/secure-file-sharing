@@ -255,17 +255,13 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	}
 
 	//use HKDF to generate symmetric encryption and mac keys
-	k := userlib.RandomBytes(16)
-	k1, _ := userlib.HashKDF(k, []byte("fenc"))
-	k2, _ := userlib.HashKDF(k, []byte("fmac"))
-
-	//shorten keys to 16 bytes so they can be used
-	fSymEncrypt := k1[:16]
-	fMac := k2[:16]
+	key := userlib.RandomBytes(16)
+	mackey, _ := userlib.HashKDF(key, []byte("mac"))
+	mackey := mackey[:16]
 
 	//encrypt and mac filedata
-	encryptedData := userlib.SymEnc(fSymEncrypt, userlib.RandomBytes(16), data)
-	dataMAC, _ := userlib.HMACEval(fMac, encryptedData)
+	encryptedData := userlib.SymEnc(key, userlib.RandomBytes(16), data)
+	dataMAC, _ := userlib.HMACEval(mackey, encryptedData)
 	encryptedMACedData := append(encryptedData, dataMAC...)
 
 	//build file
@@ -277,8 +273,8 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 
 	//encrypt and mac file
 	marshaledFile, _ := json.Marshal(file)
-	encryptedFile := userlib.SymEnc(fSymEncrypt, userlib.RandomBytes(16), marshaledFile)
-	fileMAC, _ := userlib.HMACEval(fMac, encryptedFile)
+	encryptedFile := userlib.SymEnc(key, userlib.RandomBytes(16), marshaledFile)
+	fileMAC, _ := userlib.HMACEval(mackey, encryptedFile)
 	encryptedMACedFile := append(encryptedFile, fileMAC...)
 
 	//store encryptedMACedFile in datastore
@@ -288,7 +284,7 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 		nft.NextHop = fileUUID
 		nft.LastHop = true
 		recipientPubKey, _ := userlib.KeystoreGet(userdata.Username+"enc")
-		nft.FileKey, _ = userlib.PKEEnc(recipientPubKey, fSymEncrypt)
+		nft.FileKey, _ = userlib.PKEEnc(recipientPubKey, key)
 		nft.HashedName = hashedFilename
 		nft.Created = true
 
@@ -314,10 +310,12 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 // existing file, but only whatever additional information and
 // metadata you need.
 func (userdata *User) AppendFile(filename string, data []byte) (err error) {
-	/*
 	var found bool
 	var key []byte
 	var myToken FileToken
+	var baseFile File
+	var edit File
+	var previousFinal File
 
 	//UUID for the new edit
 	editID, _ := uuid.FromBytes(userlib.RandomBytes(16))
@@ -338,22 +336,14 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 				}
 				json.Unmarshal(marshalledFileToken, &myToken)
 			}
-			//
+			//get accessUUID 
 			accessUUID := myToken.NextHop
 			encryptedMACedFile := userlib.DatastoreGet(myToken.NextHop)
-
-			//
 			encryptedFile := encryptedMACedFile[:len(encryptedMACedFile)-64]
 
 			//decrypt and unmarshalle
-			var file File
 			marshalledFile, _ := userlib.SymDec(key, encryptedFile)
-			json.Unmarshal(marshalledFile, &file)
-			
-			//check data
-			encryptedMACedData := file.FileData
-			encryptedData := encryptedMACedData[:len(encryptedMACedData)-64]
-
+			json.Unmarshal(marshalledFile, &baseFile)
 
 			found = true
 		}
@@ -363,7 +353,31 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 	if !found {
 		return errors.New(strings.ToTitle("File does not exist with this user!"))
 	}
-	*/
+
+	//nullUUID for checking edits 
+	nullUUID := uuid.FromBytes([]byte("NullUUID"))
+
+	//should have baseFile and key
+	mackey, _ := userlib.HashKDF(key, []byte("mac"))
+	mackey := mackey[:16]
+
+	//encrypt and mac filedata
+	encryptedData := userlib.SymEnc(key, userlib.RandomBytes(16), data)
+	dataMAC, _ := userlib.HMACEval(mackey, encryptedData)
+	encryptedMACedData := append(encryptedData, dataMAC...)
+
+	//build file
+	edit.FileData = encryptedMACedData
+	edit.NextEdit, _ = nullUUID
+	edit.FinalEdit, _ = NullUUID
+
+	//if first edit 
+	if baseFile.NextHop = nullUUID {
+
+	} else {
+		
+	}
+
 	return
 }
 
