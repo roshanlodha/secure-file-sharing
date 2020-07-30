@@ -335,7 +335,7 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 
 				//set in datastore
 				userlib.DatastoreSet(userdata.UserUUID, encryptedMACedUser)
-				
+
 				return
 			}
 		}
@@ -734,24 +734,41 @@ func (userdata *User) ReceiveFile(filename string, sender string,
 	accessUUID, _ := uuid.FromBytes(accessBytes)
 
 	//check if file already shared with user
-	for _, f := range userdata.Files {
-		fileToken, ok := userlib.DatastoreGet(f)
-		json.Unmarshal(fileToken, &myToken)
+	for i, token := range userdata.Files {
+		fileToken, ok := userlib.DatastoreGet(token)
 		if !ok {
-			return errors.New(strings.ToTitle("FileToken not found!"))
-		}
+			userdata.Files = append(userdata.Files[:i], userdata.Files[i+1:]...)
+		}	
+		json.Unmarshal(fileToken, &myToken)
 		if (myToken.HashedName == hashedFilename) {
+			//update User struct in datastore
+			//generate a (deterministic) keys to encrypt and MAC User
+			usersymkey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("enc"))
+			usersymkey = usersymkey[:16]
+			usermackey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("mac"))
+			usermackey = usermackey[:16]
+
+			//marshall user 
+			marshalledUser, _ := json.Marshal(userdata)
+
+			//encrypt and mac user struct
+			encyptedUser := userlib.SymEnc(usersymkey, userlib.RandomBytes(16), marshalledUser)
+			userMAC, _ := userlib.HMACEval(usermackey, usermackey)
+			encryptedMACedUser := append(encyptedUser, userMAC...)
+
+			//set in datastore
+			userlib.DatastoreSet(userdata.UserUUID, encryptedMACedUser)
+
 			return errors.New(strings.ToTitle("File already shared!"))
 		}
 	}
 
-	//TODO: validate signature
 	signature := []byte(magic_string)[16:]
 	verKey, ok := userlib.KeystoreGet(sender+"ver")
 	if !ok {
 		return errors.New(strings.ToTitle("Sender not found!"))
 	} else if userlib.DSVerify(verKey, accessBytes, signature) != nil {
-
+		return errors.New(strings.ToTitle("File token corrupted!"))
 	}
 
 	//unmarshal token
