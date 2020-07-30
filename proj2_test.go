@@ -13,7 +13,7 @@ import (
 	"github.com/cs161-staff/userlib"
 	_ "encoding/json"
 	_ "encoding/hex"
-	"github.com/google/uuid"
+	_ "github.com/google/uuid"
 	_ "strings"
 	_ "errors"
 	_ "strconv"
@@ -776,7 +776,7 @@ func TestSameFileName(t *testing.T) {
 	}
 }
 
-
+/*
 func TestFileDeleted(t *testing.T) {
 	clear()
 
