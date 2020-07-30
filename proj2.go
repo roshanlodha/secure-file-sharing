@@ -238,6 +238,7 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	var nft FileToken
 	var exists bool
 	var file File
+	//var overrideK []byte
 	var fileUUID uuid.UUID
 
 	//generate file's hashedFilename
@@ -252,7 +253,7 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 		}
 		if (myToken.HashedName == hashedFilename) && (myToken.Created) {
 			exists = true
-			fileUUID = myToken.NextHop
+			//overrideK = myToken.FileKey
 		}
 	}
 
@@ -277,11 +278,11 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	fileMAC, _ := userlib.HMACEval(mackey, encryptedFile)
 	encryptedMACedFile := append(encryptedFile, fileMAC...)
 
-	
+	fileUUID, _ = uuid.FromBytes(key)
+
+
 
 	if !exists {
-
-		fileUUID, _ = uuid.FromBytes(key)
 
 		//store encryptedMACedFile in datastore
 		userlib.DatastoreSet(fileUUID, encryptedMACedFile)
@@ -306,8 +307,12 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 
 	} else {
 
+		//key, _ = userlib.PKEDec(userdata.DecKey, overrideK)
+
+		fileUUID, _ = uuid.FromBytes(key)
 		//store encryptedMACedFile in datastore
 		userlib.DatastoreSet(fileUUID, encryptedMACedFile)
+
 
 	}
 
