@@ -811,6 +811,8 @@ func TestFileDeleted(t *testing.T) {
 
 }
 
+/*
+
 func TestFileIntegrity(t *testing.T) {
 	clear()
 
@@ -1038,5 +1040,5 @@ func TestShareComplex(t *testing.T) {
 
 }
 
-
+*/
 
