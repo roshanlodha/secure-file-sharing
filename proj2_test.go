@@ -58,7 +58,6 @@ func TestStorage(t *testing.T) {
 
 	v := []byte("This is a test")
 	u.StoreFile("file1", v)
-
 	v2, err2 := u.LoadFile("file1")
 	if err2 != nil {
 		t.Error("Failed to upload and download", err2)
@@ -210,7 +209,6 @@ func TestStoreLoadFile(t *testing.T) {
 		t.Error("Downloaded a file that does not exist", err5)
 		return
 	}
-
 }
 
 
@@ -249,6 +247,7 @@ func TestAppendFile(t *testing.T) {
 	v3 := []byte("This is a test" + "Appending this to my test file")
 	if string(v3) != string(v2) {
 		t.Error("Did not append contents correctly", err4)
+		t.Error(string(v2))
 		return 
 	}
 
@@ -304,6 +303,8 @@ func TestAppendFile(t *testing.T) {
 
 	if string(v8) != string(v9) {
 		t.Error("Did not append contents correctly", err11)
+		t.Error("loaded: ", string(v9))
+		t.Error("correct: ", string(v8))
 		return 
 	}
 	
