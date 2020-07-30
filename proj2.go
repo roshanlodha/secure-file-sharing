@@ -156,7 +156,9 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 
 	//generate a (deterministic) keys to encrypt and MAC User
 	usersymkey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("enc"))
+	usersymkey = usersymkey[:16]
 	usermackey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("mac"))
+	usermackey = usermackey[:16]
 
 	//marshall user 
 	marshalledUser, _ := json.Marshal(userdata)
@@ -198,7 +200,9 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	saltedPassword := userlib.Argon2Key([]byte(password), []byte(username), 16)
 	//generate a (deterministic) keys to decrypt and Verify User
 	usersymkey, _ := userlib.HashKDF(saltedPassword, []byte("enc"))
+	usersymkey = usersymkey[:16]
 	usermackey, _ := userlib.HashKDF(saltedPassword, []byte("mac"))
+	usermackey = usermackey[:16]
 
 	//seperate user struct from MAC
 	encyptedUser := encryptedMACedUser[:len(encryptedMACedUser)-len(randomMAC)]
