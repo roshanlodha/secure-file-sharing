@@ -86,6 +86,7 @@ func bytesToUUID(data []byte) (ret uuid.UUID) {
 type User struct {
 	Username string
 	Userkey []byte
+	UserUUID uuid.UUID
 	DecKey userlib.PKEDecKey
 	SignKey userlib.DSSignKey
 	Created []CreatedFile
@@ -113,7 +114,6 @@ type ReceivedFile struct {
 }
 
 type Share struct {
-	Creator uuid.UUID
 	NextHop uuid.UUID
 	Key []byte
 	FinalHop bool
@@ -125,19 +125,6 @@ type File struct {
 	NextEdit uuid.UUID
 	FinalEdit uuid.UUID
 	ContentSign []byte
-}
-
-// This updates the User struct in datastore.
-//
-// Helper function to handle multiple instances of same user.
-func updateUser(userdata *User) {
-	//get userUUID
-	temp := userlib.Hash([]byte(userdata.Username))
-	userID, _ := uuid.FromBytes(temp[:16])
-	
-	//marshal user and set in datastore
-	packaged_data, _ := json.Marshal(userdata)
-	userlib.DatastoreSet(userID, packaged_data)
 }
 
 // This creates a user.  It will only be called once for a user
@@ -174,6 +161,7 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 
 	userdata.Username = username
 	userdata.Userkey = userlib.Argon2Key([]byte(password), []byte(username), 32)
+	userdata.UserUUID = userID
 	
 	EncKey, userdata.DecKey, err = userlib.PKEKeyGen()
 	err = userlib.KeystoreSet(username+"enc", EncKey)
@@ -183,11 +171,9 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 
 	userdata.Sign, _ = userlib.DSSign(userdata.SignKey, userdata.Userkey) 
 	userinfo, err = json.Marshal(userdata)
-
 	userlib.DatastoreSet(userID, userinfo)
-	//End of toy implementation
 
-	return &userdata, nil
+	return userdataptr, nil
 }
 
 // This fetches the user information from the Datastore.  It should
@@ -201,6 +187,7 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	temp := userlib.Hash([]byte(username))
 	userID, err := uuid.FromBytes(temp[:16])
 	userStruct, ok := userlib.DatastoreGet(userID)
+	
 
 	//if user does not exist, error
 	if !ok {
@@ -209,7 +196,7 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	}
 
 	//unmarshal user struct and compute salted hashed password
-	json.Unmarshal(userStruct, &userdataptr)
+	json.Unmarshal(userStruct, &userdata)
 	userKeyPrime := userlib.Argon2Key([]byte(password), []byte(username), 32)
 
 	//if passwords do not match, error
@@ -245,7 +232,15 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 func (userdata *User) StoreFile(filename string, data []byte) {
 	var file File
 	key := userlib.RandomBytes(16)
-	var overwrite bool 
+	var overwrite bool
+
+	//update userdata
+	//refreshedUserData, _ := userlib.DatastoreGet(userdata.UserUUID)
+	//json.Unmarshal(refreshedUserData, &userdata) 
+
+	//hash filename||username for confidentiality and file UUID
+	hashedFileID := userlib.Hash([]byte(filename + userdata.Username))
+	fileUUID, _ := uuid.FromBytes([]byte(hashedFileID[:16]))
 
 	//check if file already exists
 	for _, file := range userdata.Created {
@@ -254,10 +249,6 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 			key = file.FileKey
 		}
 	}
-
-	//hash filename||username for confidentiality and file UUID
-	hashedFileID := userlib.Hash([]byte(filename + userdata.Username))
-	fileUUID, _ := uuid.FromBytes([]byte(hashedFileID[:16]))
 
 	//build and marshall File
 	file.FileData = userlib.SymEnc(key, userlib.RandomBytes(16), data)
@@ -271,17 +262,14 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	userlib.DatastoreSet(fileUUID, packaged_data)
 
 	//add file metadata to CreatedFile instance
-	metadata := CreatedFile{fileUUID, key, filename}
-	userdata.Created = append(userdata.Created, metadata)
-
-	//add file metadata to CreatedFile instance
-	if !overwrite{
+	if !overwrite {
 		metadata := CreatedFile{fileUUID, key, filename}
 		userdata.Created = append(userdata.Created, metadata)
 	}
 
-	//multiple instance check - update userdata in DataStore 
-	updateUser(userdata)
+	//update User struct in Datastore
+	marshallUserData, _ := json.Marshal(userdata)
+	userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
 
 	return
 }
@@ -417,8 +405,13 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 	var fileUUID uuid.UUID
 	var file File
 
+	//update userdata
+	//refreshedUserData, _ := userlib.DatastoreGet(userdata.UserUUID)
+	//json.Unmarshal(refreshedUserData, &userdata) 
+
 	//look for file in created table
 	for _, createdfile := range userdata.Created {
+
 		if createdfile.FileName == filename {
 			key = createdfile.FileKey 
 			fileUUID = createdfile.FileUUID
@@ -450,7 +443,6 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 				json.Unmarshal(marshalledShare, &share)
 			}
 			fileUUID = share.NextHop
-			
 			break
 		}
 	}
@@ -466,6 +458,9 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 
 	//unmarshall file and decrypt FileData
 	json.Unmarshal(packaged_data, &file)
+	if(len(file.FileData)) == 0 {
+		return nil, errors.New(strings.ToTitle("Empty file!"))
+	}
 	data = append(data, userlib.SymDec(key, file.FileData)...)
 
 	/*
@@ -507,6 +502,10 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 // should be able to know the sender.
 func (userdata *User) ShareFile(filename string, recipient string) (
 	magic_string string, err error) {
+
+	//update userdata
+	//refreshedUserData, _ := userlib.DatastoreGet(userdata.UserUUID)
+	//json.Unmarshal(refreshedUserData, &userdata) 	
 
 	magic_string = string(userlib.RandomBytes(16))
 	var ss Share
@@ -552,8 +551,6 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 
 
 	//create new Share Struct with encrypted file data
-	hashedUserName := userlib.Hash([]byte(userdata.Username))
-	ss.Creator, _ = uuid.FromBytes(hashedUserName[:16])
 	recipientPubKey, _ := userlib.KeystoreGet(recipient+"enc")
 	ss.Key, _ = userlib.PKEEnc(recipientPubKey, key)
 
@@ -568,8 +565,9 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 	//sf.TokenSign, _ = userlib.DSSign(userdata.SignKey, []byte(sf.MagicString)) 
 	userdata.Shared = append(userdata.Shared, sf)
 
-	//multiple instance check - update userdata in DataStore 
-	updateUser(userdata)
+	//update User struct in Datastore
+	//marshallUserData, _ := json.Marshal(userdata)
+	//userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
 
 	return magic_string, err
 }
@@ -580,6 +578,10 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 // it is authentically from the sender.
 func (userdata *User) ReceiveFile(filename string, sender string,
 	magic_string string) error {
+
+	//update userdata
+	//refreshedUserData, _ := userlib.DatastoreGet(userdata.UserUUID)
+	//json.Unmarshal(refreshedUserData, &userdata) 
 		
 	var receivedfile ReceivedFile
 	var share Share
@@ -639,14 +641,16 @@ func (userdata *User) ReceiveFile(filename string, sender string,
 	receivedfile.AccessUUID = accessUUID
 	userdata.Received = append(userdata.Received, receivedfile)
 
-	//multiple instance check - update userdata in DataStore 
-	updateUser(userdata)
-	
+	//update User struct in Datastore
+	//marshallUserData, _ := json.Marshal(userdata)
+	//userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
+
 	return nil
 }
 
 // Removes target user's access.
 func (userdata *User) RevokeFile(filename string, target_username string) (err error) {
+
 	var target string
 	var magic_string string
 	var creator bool
@@ -672,6 +676,21 @@ func (userdata *User) RevokeFile(filename string, target_username string) (err e
 	}
 	accessUUID, _ := uuid.FromBytes([]byte(magic_string))
 	userlib.DatastoreDelete(accessUUID)
+
+	//find index of token in Shared
+	var deletionindex int
+	for i, token := range userdata.Shared {
+		if token.MagicString == magic_string {
+			deletionindex = i
+		}
+	}
+	//delete from Shared table
+	userdata.Shared[deletionindex] = userdata.Shared[len(userdata.Shared)-1]
+	userdata.Shared = userdata.Shared[:len(userdata.Shared)-1]
+
+	//update User struct in Datastore
+	//marshallUserData, _ := json.Marshal(userdata)
+	//userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
 
 	return err
 
