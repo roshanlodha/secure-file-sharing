@@ -127,25 +127,6 @@ type File struct {
 	ContentSign []byte
 }
 
-// Helper function to handle multiple user instances.
-func RefreshUser(userID uuid.UUID) (userdataptr *User, err error) {
-	var userdata User
-
-	//compute user UUID and see if user is in datastore
-	userStruct, ok := userlib.DatastoreGet(userID)
-
-	//if user does not exist, error
-	if !ok {
-		err = errors.New("user does not exist")
-		return userdataptr, err
-	}
-
-	//unmarshal user struct and compute salted hashed password
-	json.Unmarshal(userStruct, &userdata)
-
-	return &userdata, nil
-}
-
 // This creates a user.  It will only be called once for a user
 // (unless the keystore and datastore are cleared during testing purposes)
 
@@ -190,10 +171,9 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 
 	userdata.Sign, _ = userlib.DSSign(userdata.SignKey, userdata.Userkey) 
 	userinfo, err = json.Marshal(userdata)
-
 	userlib.DatastoreSet(userID, userinfo)
 
-	return &userdata, nil
+	return userdataptr, nil
 }
 
 // This fetches the user information from the Datastore.  It should
@@ -207,6 +187,7 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	temp := userlib.Hash([]byte(username))
 	userID, err := uuid.FromBytes(temp[:16])
 	userStruct, ok := userlib.DatastoreGet(userID)
+	
 
 	//if user does not exist, error
 	if !ok {
@@ -224,7 +205,24 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 		return userdataptr, err
 	}
 
-	return &userdata, nil
+	/*
+	//if verify key does not exist, error
+	verKey, ok := userlib.KeystoreGet(userdata.Username + "verify")
+	if !ok {
+		err = errors.New("verify key does not exist")
+		return userdataptr, err
+	}
+
+	
+	//if userkey tampered, error
+	keyErr := userlib.DSVerify(verKey, userdata.Userkey, userdata.Sign)
+	if keyErr != nil {
+		err = errors.New("userkey tampered with")
+		return userdataptr, err
+	}
+	*/
+
+	return userdataptr, nil
 }
 
 // This stores a file in the datastore.
@@ -232,10 +230,6 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 // The plaintext of the filename + the plaintext and length of the filename 
 // should NOT be revealed to the datastore!
 func (userdata *User) StoreFile(filename string, data []byte) {
-	//refresh user
-	userdataptr, _ := RefreshUser(userdata.UserUUID)
-	*userdata = *userdataptr
-
 	var file File
 	key := userlib.RandomBytes(16)
 	var overwrite bool
@@ -268,7 +262,7 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 	userlib.DatastoreSet(fileUUID, packaged_data)
 
 	//add file metadata to CreatedFile instance
-	if !overwrite{
+	if !overwrite {
 		metadata := CreatedFile{fileUUID, key, filename}
 		userdata.Created = append(userdata.Created, metadata)
 	}
@@ -286,13 +280,7 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 // existing file, but only whatever additional information and
 // metadata you need.
 func (userdata *User) AppendFile(filename string, data []byte) (err error) {
-	//refresh user
-	userdataptr, refresherrorr := RefreshUser(userdata.UserUUID)
-	if refresherrorr != nil {
-		return errors.New("Error while refreshing user!")
-	}
-	*userdata = *userdataptr
-
+	
 	var found bool
 	var prevFile File
 	var OGfile File
@@ -412,13 +400,7 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 //
 // It should give an error if the file is corrupted in any way.
 func (userdata *User) LoadFile(filename string) (data []byte, err error) {
-	//refresh user
-	userdataptr, refresherrorr := RefreshUser(userdata.UserUUID)
-	if refresherrorr != nil {
-		return nil, errors.New("Error while refreshing user!")
-	}
-	*userdata = *userdataptr
-
+	
 	var key []byte
 	var fileUUID uuid.UUID
 	var file File
@@ -429,6 +411,7 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 
 	//look for file in created table
 	for _, createdfile := range userdata.Created {
+
 		if createdfile.FileName == filename {
 			key = createdfile.FileKey 
 			fileUUID = createdfile.FileUUID
@@ -519,12 +502,7 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 // should be able to know the sender.
 func (userdata *User) ShareFile(filename string, recipient string) (
 	magic_string string, err error) {
-	//refresh user
-	userdataptr, refresherrorr := RefreshUser(userdata.UserUUID)
-	if refresherrorr != nil {
-		return "", errors.New("Error while refreshing user!")
-	}
-	*userdata = *userdataptr
+
 	//update userdata
 	//refreshedUserData, _ := userlib.DatastoreGet(userdata.UserUUID)
 	//json.Unmarshal(refreshedUserData, &userdata) 	
@@ -588,8 +566,8 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 	userdata.Shared = append(userdata.Shared, sf)
 
 	//update User struct in Datastore
-	marshallUserData, _ := json.Marshal(userdata)
-	userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
+	//marshallUserData, _ := json.Marshal(userdata)
+	//userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
 
 	return magic_string, err
 }
@@ -664,8 +642,8 @@ func (userdata *User) ReceiveFile(filename string, sender string,
 	userdata.Received = append(userdata.Received, receivedfile)
 
 	//update User struct in Datastore
-	marshallUserData, _ := json.Marshal(userdata)
-	userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
+	//marshallUserData, _ := json.Marshal(userdata)
+	//userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
 
 	return nil
 }
@@ -707,15 +685,12 @@ func (userdata *User) RevokeFile(filename string, target_username string) (err e
 		}
 	}
 	//delete from Shared table
-	if len(userdata.Shared) == 0 {
-		return errors.New(strings.ToTitle("Tried to revoke nonexistant file."))
-	}
 	userdata.Shared[deletionindex] = userdata.Shared[len(userdata.Shared)-1]
 	userdata.Shared = userdata.Shared[:len(userdata.Shared)-1]
 
 	//update User struct in Datastore
-	marshallUserData, _ := json.Marshal(userdata)
-	userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
+	//marshallUserData, _ := json.Marshal(userdata)
+	//userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
 
 	return err
 
