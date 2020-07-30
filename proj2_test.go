@@ -859,7 +859,7 @@ func TestFileIntegrity(t *testing.T) {
 	}
 
 }
-/*
+
 func TestFileIntegrityComplex(t *testing.T) {
 	clear()
 
@@ -921,7 +921,7 @@ func TestFileIntegrityComplex(t *testing.T) {
 
 }
 
-
+*/
 func TestShareComplex(t *testing.T) {
 	clear()
 
@@ -1038,5 +1038,5 @@ func TestShareComplex(t *testing.T) {
 
 }
 
-*/
+
 
