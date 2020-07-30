@@ -206,6 +206,7 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 
 	//seperate user struct from MAC
 	encyptedUser := encryptedMACedUser[:len(encryptedMACedUser)-len(randomMAC)]
+	/*
 	userMAC := encryptedMACedUser[len(encryptedMACedUser)-len(randomMAC):]
 
 	//verify user
@@ -215,8 +216,14 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	}
 
 	//decrypt user and unmarshal at userdataptr
+	*/
 	decryptedUser := userlib.SymDec(usersymkey, encyptedUser)
 	json.Unmarshal(decryptedUser, userdataptr)
+
+	//check password
+	if string(saltedPassword) != string(userdata.SaltedPassword) {
+		return nil, errors.New("Incorrect password!")
+	}
 
 	return userdataptr, nil
 }
