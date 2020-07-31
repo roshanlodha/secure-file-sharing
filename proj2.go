@@ -272,6 +272,14 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 		}
 	}
 
+	//check if file already exists
+	for _, file := range userdata.Received {
+		if file.FileName == filename {
+			overwrite = true
+			key = file.FileKey
+		}
+	}
+
 	mackey, _ := userlib.HashKDF(key, []byte("mac"))
 	mackey = mackey[:16]
 
@@ -488,6 +496,8 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 	var key []byte
 	var fileUUID uuid.UUID
 	var file File
+	//var created bool
+	///var received bool
 
 	//update userdata
 	//refreshedUserData, _ := userlib.DatastoreGet(userdata.UserUUID)
@@ -499,6 +509,7 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 		if createdfile.FileName == filename {
 			key = createdfile.FileKey 
 			fileUUID = createdfile.FileUUID
+			//created = true
 
 			break
 		}
@@ -507,6 +518,7 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 	//look in received table if not in created
 	for _, receivedfile := range userdata.Received {
 		if receivedfile.FileName == filename {
+			//received = true
 			var share Share
 			key = receivedfile.FileKey 
 			shareUUID := receivedfile.AccessUUID
@@ -682,6 +694,13 @@ func (userdata *User) ReceiveFile(filename string, sender string,
 		}
 	}
 
+	//check if file already shared
+	for _, file := range userdata.Created {
+		if file.FileName == filename {
+			return errors.New(strings.ToTitle("You already have a file with this name!"))
+		}
+	}
+
 	//create accessUUID for magic string
 	accessUUID, _ := uuid.FromBytes([]byte(magic_string))
 
@@ -740,6 +759,7 @@ func (userdata *User) RevokeFile(filename string, target_username string) (err e
 	var target string
 	var magic_string string
 	var creator bool
+	var found bool
 
 	for _, cf := range userdata.Created {
 		if cf.FileName == filename {
@@ -757,8 +777,13 @@ func (userdata *User) RevokeFile(filename string, target_username string) (err e
 	for _, t := range userdata.Shared {
 		if t.Recipient == target {
 			magic_string = t.MagicString
+			found = true
 			break
 		}
+	}
+
+	if !found {
+		return errors.New(strings.ToTitle("You didn't share this file with this user!"))
 	}
 	accessUUID, _ := uuid.FromBytes([]byte(magic_string))
 	userlib.DatastoreDelete(accessUUID)
