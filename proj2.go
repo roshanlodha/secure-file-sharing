@@ -126,6 +126,36 @@ type File struct {
 	FinalEdit uuid.UUID
 	ContentSign []byte
 }
+func RefreshUser(username string, saltedPassword []byte) (userdataptr *User, err error) {
+	var userdata User
+
+	//compute user UUID and see if user is in datastore
+	hashedUsername := userlib.Hash([]byte(username))
+	userID, err := uuid.FromBytes(hashedUsername[:16])
+	encryptedMACedUser, ok := userlib.DatastoreGet(userID)
+
+	//use random data to get len of mac
+	randomMAC, _ := userlib.HMACEval(userlib.RandomBytes(16), []byte("whyisthisprojectsohard"))
+
+	if (!ok) || (len(encryptedMACedUser) <= len(randomMAC)) {
+		return nil, errors.New("User not found or corrupted!")
+	}
+
+	//generate a (deterministic) keys to decrypt and Verify User
+	usersymkey, _ := userlib.HashKDF(saltedPassword, []byte("enc"))
+	usersymkey = usersymkey[:16]
+	usermackey, _ := userlib.HashKDF(saltedPassword, []byte("mac"))
+	usermackey = usermackey[:16]
+
+	//seperate user struct from MAC
+	encryptedUser := encryptedMACedUser[:len(encryptedMACedUser)-64]
+	
+	//decrypt user and unmarshal at userdataptr
+	decryptedUser := userlib.SymDec(usersymkey, encryptedUser)
+	json.Unmarshal(decryptedUser, &userdata)
+
+	return &userdata, nil
+}
 
 // This creates a user.  It will only be called once for a user
 // (unless the keystore and datastore are cleared during testing purposes)
@@ -201,7 +231,6 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 // data was corrupted, or if the user can't be found.
 func GetUser(username string, password string) (userdataptr *User, err error) {
 	var userdata User
-	userdataptr = &userdata
 
 	//compute user UUID and see if user is in datastore
 	hashedUsername := userlib.Hash([]byte(username))
@@ -244,7 +273,7 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 		return nil, errors.New("Incorrect password!")
 	}
 
-	return userdataptr, nil
+	return &userdata, nil
 }
 
 // This stores a file in the datastore.
@@ -252,13 +281,12 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 // The plaintext of the filename + the plaintext and length of the filename 
 // should NOT be revealed to the datastore!
 func (userdata *User) StoreFile(filename string, data []byte) {
+	userdataptr, _ := RefreshUser(userdata.Username, userdata.SaltedPassword)
+	*userdata = *userdataptr
+	
 	var file File
 	key := userlib.RandomBytes(16)
 	var overwrite bool
-
-	//update userdata
-	//refreshedUserData, _ := userlib.DatastoreGet(userdata.UserUUID)
-	//json.Unmarshal(refreshedUserData, &userdata) 
 
 	//hash filename||username for confidentiality and file UUID
 	hashedFileID := userlib.Hash([]byte(filename + userdata.Username))
@@ -303,11 +331,11 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 		userdata.Created = append(userdata.Created, metadata)
 	}
 
-	//update User struct in datastore
 	//generate a (deterministic) keys to encrypt and MAC User
 	usersymkey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("enc"))
-	usersymkey = usersymkey[:16]
 	usermackey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("mac"))
+
+	usersymkey = usersymkey[:16]
 	usermackey = usermackey[:16]
 
 	//marshall user 
@@ -315,7 +343,7 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 
 	//encrypt and mac user struct
 	encryptedUser := userlib.SymEnc(usersymkey, userlib.RandomBytes(16), marshalledUser)
-	userMAC, _ := userlib.HMACEval(usermackey, usermackey)
+	userMAC, _ := userlib.HMACEval(usermackey, encryptedUser)
 	encryptedMACedUser := append(encryptedUser, userMAC...)
 
 	//set in datastore
@@ -330,7 +358,9 @@ func (userdata *User) StoreFile(filename string, data []byte) {
 // existing file, but only whatever additional information and
 // metadata you need.
 func (userdata *User) AppendFile(filename string, data []byte) (err error) {
-	
+	userdataptr, _ := RefreshUser(userdata.Username, userdata.SaltedPassword)
+	*userdata = *userdataptr
+
 	var found bool
 	var prevFile File
 	var OGfile File
@@ -492,7 +522,9 @@ func (userdata *User) AppendFile(filename string, data []byte) (err error) {
 //
 // It should give an error if the file is corrupted in any way.
 func (userdata *User) LoadFile(filename string) (data []byte, err error) {
-	
+	userdataptr, _ := RefreshUser(userdata.Username, userdata.SaltedPassword)
+	*userdata = *userdataptr
+
 	var key []byte
 	var fileUUID uuid.UUID
 	var file File
@@ -601,9 +633,8 @@ func (userdata *User) LoadFile(filename string) (data []byte, err error) {
 func (userdata *User) ShareFile(filename string, recipient string) (
 	magic_string string, err error) {
 
-	//update userdata
-	//refreshedUserData, _ := userlib.DatastoreGet(userdata.UserUUID)
-	//json.Unmarshal(refreshedUserData, &userdata) 	
+	userdataptr, _ := RefreshUser(userdata.Username, userdata.SaltedPassword)
+	*userdata = *userdataptr
 
 	magic_string = string(userlib.RandomBytes(16))
 	var ss Share
@@ -663,9 +694,23 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 	//sf.TokenSign, _ = userlib.DSSign(userdata.SignKey, []byte(sf.MagicString)) 
 	userdata.Shared = append(userdata.Shared, sf)
 
-	//update User struct in Datastore
-	//marshallUserData, _ := json.Marshal(userdata)
-	//userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
+	//generate a (deterministic) keys to encrypt and MAC User
+	usersymkey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("enc"))
+	usermackey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("mac"))
+
+	usersymkey = usersymkey[:16]
+	usermackey = usermackey[:16]
+
+	//marshall user 
+	marshalledUser, _ := json.Marshal(userdata)
+
+	//encrypt and mac user struct
+	encryptedUser := userlib.SymEnc(usersymkey, userlib.RandomBytes(16), marshalledUser)
+	userMAC, _ := userlib.HMACEval(usermackey, encryptedUser)
+	encryptedMACedUser := append(encryptedUser, userMAC...)
+
+	//set in datastore
+	userlib.DatastoreSet(userdata.UserUUID, encryptedMACedUser)
 
 	return magic_string, err
 }
@@ -677,9 +722,8 @@ func (userdata *User) ShareFile(filename string, recipient string) (
 func (userdata *User) ReceiveFile(filename string, sender string,
 	magic_string string) error {
 
-	//update userdata
-	//refreshedUserData, _ := userlib.DatastoreGet(userdata.UserUUID)
-	//json.Unmarshal(refreshedUserData, &userdata) 
+	userdataptr, _ := RefreshUser(userdata.Username, userdata.SaltedPassword)
+	*userdata = *userdataptr
 		
 	var receivedfile ReceivedFile
 	var share Share
@@ -746,16 +790,29 @@ func (userdata *User) ReceiveFile(filename string, sender string,
 	receivedfile.AccessUUID = accessUUID
 	userdata.Received = append(userdata.Received, receivedfile)
 
-	//update User struct in Datastore
-	//marshallUserData, _ := json.Marshal(userdata)
-	//userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
+	//generate a (deterministic) keys to encrypt and MAC User
+	usersymkey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("enc"))
+	usermackey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("mac"))
+
+	usersymkey = usersymkey[:16]
+	usermackey = usermackey[:16]
+
+	//marshall user 
+	marshalledUser, _ := json.Marshal(userdata)
+
+	//encrypt and mac user struct
+	encryptedUser := userlib.SymEnc(usersymkey, userlib.RandomBytes(16), marshalledUser)
+	userMAC, _ := userlib.HMACEval(usermackey, encryptedUser)
+	encryptedMACedUser := append(encryptedUser, userMAC...)
+
+	//set in datastore
+	userlib.DatastoreSet(userdata.UserUUID, encryptedMACedUser)
 
 	return nil
 }
 
 // Removes target user's access.
 func (userdata *User) RevokeFile(filename string, target_username string) (err error) {
-
 	var target string
 	var magic_string string
 	var creator bool
@@ -799,9 +856,23 @@ func (userdata *User) RevokeFile(filename string, target_username string) (err e
 	userdata.Shared[deletionindex] = userdata.Shared[len(userdata.Shared)-1]
 	userdata.Shared = userdata.Shared[:len(userdata.Shared)-1]
 
-	//update User struct in Datastore
-	//marshallUserData, _ := json.Marshal(userdata)
-	//userlib.DatastoreSet(userdata.UserUUID, marshallUserData)
+	//generate a (deterministic) keys to encrypt and MAC User
+	usersymkey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("enc"))
+	usermackey, _ := userlib.HashKDF(userdata.SaltedPassword, []byte("mac"))
+
+	usersymkey = usersymkey[:16]
+	usermackey = usermackey[:16]
+
+	//marshall user 
+	marshalledUser, _ := json.Marshal(userdata)
+
+	//encrypt and mac user struct
+	encryptedUser := userlib.SymEnc(usersymkey, userlib.RandomBytes(16), marshalledUser)
+	userMAC, _ := userlib.HMACEval(usermackey, encryptedUser)
+	encryptedMACedUser := append(encryptedUser, userMAC...)
+
+	//set in datastore
+	userlib.DatastoreSet(userdata.UserUUID, encryptedMACedUser)
 
 	return err
 
